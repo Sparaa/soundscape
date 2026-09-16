@@ -22,3 +22,14 @@ def test_health_marks_unreachable_sidecars_down():
     out = asyncio.run(sidecars.all_health(client))
     assert out["yue2"] == {"ok": True, "url": sidecars.config.YUE2_URL, "gpu": "RTX 4090", "loaded": False}
     assert out["sheetsage"]["ok"] is False and "refused" in out["sheetsage"]["error"]
+
+
+def test_migrate_adds_columns_to_an_old_library(tmp_path: Path):
+    con = sqlite3.connect(tmp_path / "soundscape.db")
+    con.execute("CREATE TABLE songs (id TEXT PRIMARY KEY, station_id TEXT, title TEXT, style TEXT, lyrics TEXT, abc TEXT, plan TEXT, "
+                "seconds REAL, path TEXT NOT NULL, liked INTEGER DEFAULT 0, saved INTEGER DEFAULT 0, created REAL NOT NULL)")
+    con.commit(); con.close()
+    con = db.connect(tmp_path)
+    cols = {r[1] for r in con.execute("PRAGMA table_info(songs)")}
+    assert {"status", "explain", "gate", "played"} <= cols
+    assert db.migrate(con) == []          # idempotent

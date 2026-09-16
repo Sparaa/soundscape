@@ -21,7 +21,7 @@ export interface Seed {
   key: string | null; bpm: number | null; sections: string[] | null; style_guess: string | null;
   promoted_sections: string[] | null; warnings: string[] | null; has_score: boolean;
 }
-export interface Station { id: string; name: string; created: number; profile: Profile | null; settings: { language?: string } | null; seeds: Seed[] }
+export interface Station { id: string; name: string; created: number; profile: Profile | null; settings: { language?: string; covers?: number; blurb?: string; themes?: string[] } | null; seeds: Seed[] }
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 300)}`);
@@ -64,4 +64,29 @@ export function seedAudioUrl(seedId: string): string {
 export function sidecarLine(name: string, h: SidecarHealth): string {
   if (!h.ok) return `${name} · offline`;
   return `${name} · ${h.gpu ?? "gpu?"} · ${h.loaded ? "loaded" : "idle"}`;
+}
+
+export interface Plan { mode: "inspired" | "faithful" | "reinterpret" | "hook"; seed_id: string | null; seed_title: string | null; theme: string; bpm: number; key: string | null; mood: string[]; duration_s: number; explain: string; cot: string; created: number }
+export interface Gate { ok: boolean; reasons: string[]; seconds: number | null; mean_db: number | null; max_db: number | null; similarity: number | null }
+export interface Song { id: string; station_id: string; title: string | null; style: string | null; lyrics: string | null; abc: string | null; plan: Plan | null; seconds: number | null; path: string; liked: boolean; saved: boolean; created: number; status: string; explain: string | null; gate: Gate | null; played: number | null }
+export interface Rendering { plan: Plan; stage: string; progress: number; seconds: number; attempt: number }
+export interface RadioStatus { state: "stopped" | "warming" | "playing" | "stopping"; now_playing: Song | null; ready: Song[]; rendering: Rendering | null; buffer_target: number; recent: Song[]; events: { t: number; kind: string; [k: string]: unknown }[] }
+
+export async function radioPlay(id: string): Promise<RadioStatus> { return j(await fetch(`${API_URL}/stations/${id}/play`, { method: "POST" })); }
+export async function radioStop(id: string): Promise<RadioStatus> { return j(await fetch(`${API_URL}/stations/${id}/stop`, { method: "POST" })); }
+export async function radioNext(id: string): Promise<{ song: Song | null; status: RadioStatus }> { return j(await fetch(`${API_URL}/stations/${id}/next`, { method: "POST" })); }
+export async function radioStatus(id: string): Promise<RadioStatus> { return j(await fetch(`${API_URL}/stations/${id}/radio`, { cache: "no-store" })); }
+export async function stationSongs(id: string): Promise<Song[]> { return j(await fetch(`${API_URL}/stations/${id}/songs`, { cache: "no-store" })); }
+export async function patchSong(id: string, flags: { saved?: boolean; liked?: boolean }): Promise<Song> {
+  return j(await fetch(`${API_URL}/songs/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(flags) }));
+}
+export async function patchSettings(id: string, s: { covers?: number; blurb?: string }): Promise<Station> {
+  return j(await fetch(`${API_URL}/stations/${id}/settings`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(s) }));
+}
+export function songAudioUrl(id: string): string { return `${API_URL}/songs/${id}/audio`; }
+
+/** "cover of “X” with new words" etc., or the mode when the plan has no text. */
+export function planLabel(p: Plan | null | undefined): string {
+  if (!p) return "";
+  return p.explain || { inspired: "new song in the station's sound", faithful: "cover", reinterpret: "reinterpretation", hook: "hook" }[p.mode];
 }

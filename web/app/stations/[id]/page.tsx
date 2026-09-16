@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { addSeedFile, addSeedUrl, deleteSeed, getStation, seedAudioUrl, type Station } from "@/lib/api";
 import { TAG_ORDER, profileHeadline, seedLine, tagChips } from "@/lib/profile";
+import RadioPanel from "@/app/components/RadioPanel";
 
 export default function StationPage() {
   const { id } = useParams<{ id: string }>();
@@ -25,6 +26,7 @@ export default function StationPage() {
         <Link href="/" className="text-zinc-500 hover:text-zinc-200">← stations</Link>
         <h1 className="text-3xl font-semibold tracking-tight">{st.name}</h1>
       </header>
+      <RadioPanel station={st} onStation={setSt} />
       <section className="flex flex-col gap-2">
         <h2 className="text-xs uppercase tracking-widest text-zinc-500">Seeds</h2>
         <div className="flex gap-2">

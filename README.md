@@ -42,4 +42,6 @@ Already running `yue2-sidecar` / `sheetsage-sidecar` elsewhere (e.g. shared with
 
 ## Status
 
-Phase 1 — stations, seeds (upload or link), analysis and the station profile. Next: the agent + player (Phase 2). See `docs/plan.md` §8.
+Phase 2 — the radio plays: the agent plans each track (new song / cover / reinterpretation / hook), the LLM writes it,
+YuE2 renders it, a gate checks length, loudness and sound similarity, two songs stay cued and one spare survives Stop;
+WebAudio player with crossfade, save/like. Next: the visualizer (Phase 3). See `docs/plan.md` §8.

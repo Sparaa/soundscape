@@ -12,9 +12,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from . import abc as abclib, analyze, config, db, ingest, profile, sidecars
+import logging
 
-app = FastAPI(title="Soundscape", version="0.1.0")
+from . import abc as abclib, analyze, composer, config, db, ingest, llm as llmmod, profile, radio, sidecars
+
+log = logging.getLogger("soundscape")
+app = FastAPI(title="Soundscape", version="0.2.0")
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 state: dict[str, Any] = {}
 
@@ -23,6 +26,34 @@ def con():
     if "db" not in state:
         state["db"] = db.connect(config.LIBRARY_DIR)
     return state["db"]
+
+
+def store() -> radio.Store:
+    if "store" not in state:
+        state["store"] = radio.Store(con(), config.LIBRARY_DIR)
+    return state["store"]
+
+
+async def _render_tags(audio: bytes):
+    """CLAP tags of a finished render for the gate (SheetSage2 sidecar `describe`); None when the sidecar is busy/down."""
+    try:
+        return (await analyze.transcribe(audio, name="render-check", timeout_s=240))["tags"]
+    except Exception as e:  # the gate treats missing tags as "no similarity data"
+        log.warning("render tag check skipped: %s", e)
+        return None
+
+
+def renderer():
+    if "renderer" not in state:
+        state["renderer"] = radio.make_renderer(llm=llmmod.LLM(), yue2=composer.Yue2(), analyze_tags=_render_tags, library=config.LIBRARY_DIR)
+    return state["renderer"]
+
+
+def radio_for(sid: str) -> radio.Radio:
+    radios: dict[str, radio.Radio] = state.setdefault("radios", {})
+    if sid not in radios:
+        radios[sid] = radio.Radio(sid, store=store(), renderer=renderer())
+    return radios[sid]
 
 
 @app.on_event("startup")
@@ -179,3 +210,117 @@ def seed_analysis(seed_id: str) -> dict:
     if not r:
         raise HTTPException(404, "seed not found")
     return _row(r)["analysis"]
+
+
+# ---- radio ------------------------------------------------------------------
+
+async def _ensure_themes(sid: str) -> None:
+    """First Play on a station: ask the LLM for its lyrical themes once (kept in settings)."""
+    st = _row(con().execute("SELECT * FROM stations WHERE id=?", (sid,)).fetchone())
+    settings = st.get("settings") or {}
+    if settings.get("themes") or not st.get("profile"):
+        return
+    try:
+        themes = await llmmod.station_themes(llmmod.LLM(), style=st["profile"]["style"], blurb=settings.get("blurb", ""))
+    except Exception as e:
+        log.warning("themes: %s", e)
+        return
+    settings["themes"] = themes
+    con().execute("UPDATE stations SET settings=? WHERE id=?", (json.dumps(settings), sid))
+    con().commit()
+
+
+@app.post("/stations/{sid}/play")
+async def radio_play(sid: str) -> dict:
+    st = _station(sid)
+    if not st.get("profile"):
+        raise HTTPException(400, "seed the station first")
+    await _ensure_themes(sid)
+    r = radio_for(sid)
+    r.play()
+    return r.status()
+
+
+@app.post("/stations/{sid}/stop")
+def radio_stop(sid: str) -> dict:
+    _station(sid)
+    r = radio_for(sid)
+    r.stop()
+    return r.status()
+
+
+@app.post("/stations/{sid}/next")
+def radio_next(sid: str) -> dict:
+    _station(sid)
+    r = radio_for(sid)
+    song = r.next()
+    return {"song": song, "status": r.status()}
+
+
+@app.get("/stations/{sid}/radio")
+def radio_status(sid: str) -> dict:
+    _station(sid)
+    return radio_for(sid).status()
+
+
+class StationSettings(BaseModel):
+    covers: Optional[float] = None      # 0 = never covers … 2 = cover-heavy
+    blurb: Optional[str] = None
+    themes: Optional[list[str]] = None
+
+
+@app.patch("/stations/{sid}/settings")
+def patch_settings(sid: str, req: StationSettings) -> dict:
+    st = _row(con().execute("SELECT * FROM stations WHERE id=?", (sid,)).fetchone() or {}) or None
+    if not st:
+        raise HTTPException(404, "station not found")
+    settings = st.get("settings") or {}
+    for k, v in req.model_dump(exclude_none=True).items():
+        settings[k] = v
+    con().execute("UPDATE stations SET settings=? WHERE id=?", (json.dumps(settings), sid))
+    con().commit()
+    return _station(sid)
+
+
+# ---- songs ------------------------------------------------------------------
+
+def _song(song_id: str) -> dict[str, Any]:
+    r = con().execute("SELECT * FROM songs WHERE id=?", (song_id,)).fetchone()
+    if not r:
+        raise HTTPException(404, "song not found")
+    return store()._song(r)
+
+
+@app.get("/stations/{sid}/songs")
+def station_songs(sid: str, limit: int = 50) -> list[dict]:
+    _station(sid)
+    return [store()._song(r) for r in con().execute(
+        "SELECT * FROM songs WHERE station_id=? AND status != 'rejected' ORDER BY created DESC LIMIT ?", (sid, limit))]
+
+
+@app.get("/songs/{song_id}")
+def get_song(song_id: str) -> dict:
+    return _song(song_id)
+
+
+@app.get("/songs/{song_id}/audio")
+def song_audio(song_id: str):
+    s = _song(song_id)
+    p = Path(s["path"])
+    if not p.exists():
+        raise HTTPException(404, "audio missing")
+    return FileResponse(p, media_type="audio/flac", filename=f"{s.get('title') or song_id}.flac")
+
+
+class SongFlags(BaseModel):
+    saved: Optional[bool] = None
+    liked: Optional[bool] = None
+
+
+@app.patch("/songs/{song_id}")
+def patch_song(song_id: str, req: SongFlags) -> dict:
+    _song(song_id)
+    for k, v in req.model_dump(exclude_none=True).items():
+        con().execute(f"UPDATE songs SET {k}=? WHERE id=?", (1 if v else 0, song_id))
+    con().commit()
+    return _song(song_id)

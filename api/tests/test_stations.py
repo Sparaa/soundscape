@@ -66,3 +66,37 @@ def test_transcribe_polls_the_job(monkeypatch):
     client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
     out = asyncio.run(analyze.transcribe(b"x", name="n", client=client, poll_s=0))
     assert out["key"] == "C major" and out["promoted_sections"] == [] and "timing" in out
+
+
+def test_radio_routes_with_a_fake_renderer(monkeypatch):
+    import asyncio, json, time
+    from app import radio
+    from app.agent import Plan
+
+    async def fake_render(station, seeds, plan, progress):
+        await asyncio.sleep(0)
+        sid = f"r{int(time.time()*1000)%100000}{len(station['name'])}"
+        return {"id": sid, "title": "T", "style": "s", "lyrics": "[Verse]\nla", "abc": None, "plan": plan.to_dict(), "seconds": 100.0,
+                "path": "/nonexistent.flac", "explain": plan.explain, "gate": {"ok": True, "reasons": []}}
+    monkeypatch.setattr(main, "renderer", lambda: fake_render)
+    async def no_themes(sid): return None
+    monkeypatch.setattr(main, "_ensure_themes", no_themes)
+    with TestClient(main.app) as c:
+        st = c.post("/stations", json={"name": "R"}).json(); sid = st["id"]
+        assert c.post(f"/stations/{sid}/play").status_code == 400          # no profile yet
+        main.con().execute("UPDATE stations SET profile=? WHERE id=?", (json.dumps({"style": "English, pop, 110 BPM", "bpm": {"low": 100, "high": 120, "center": 110}, "keys": [], "tags": {}}), sid))
+        main.con().commit()
+        s = c.post(f"/stations/{sid}/play").json()
+        assert s["state"] in ("warming", "playing")
+        for _ in range(100):
+            time.sleep(0.05)
+            if len(c.get(f"/stations/{sid}/radio").json()["ready"]) >= 2:
+                break
+        nx = c.post(f"/stations/{sid}/next").json()
+        assert nx["song"]["title"] == "T" and nx["status"]["now_playing"]["id"] == nx["song"]["id"]
+        song_id = nx["song"]["id"]
+        assert c.patch(f"/songs/{song_id}", json={"saved": True}).json()["saved"] is True
+        assert c.get(f"/stations/{sid}/songs").json()[0]["id"] in {x["id"] for x in c.get(f"/stations/{sid}/songs").json()}
+        assert c.get(f"/songs/{song_id}/audio").status_code == 404        # fake path
+        assert c.patch(f"/stations/{sid}/settings", json={"covers": 0.5}).json()["settings"]["covers"] == 0.5
+        assert c.post(f"/stations/{sid}/stop").json()["state"] in ("stopping", "stopped")
