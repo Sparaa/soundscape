@@ -32,25 +32,25 @@ export default function StationPage() {
         <h2 className="text-xs uppercase tracking-widest text-zinc-500">Seeds</h2>
         <div className="flex gap-2">
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a YouTube / any link…" disabled={!!busy}
-                 className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-zinc-500" />
+                 className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-zinc-500" />
           <button disabled={!!busy || !url.trim()} onClick={() => run("link", () => addSeedUrl(st.id, url.trim()).then((s) => { setUrl(""); return s; }))}
-                  className="px-3 py-2 rounded-lg bg-zinc-100 text-black font-medium disabled:opacity-40">Add link</button>
-          <button disabled={!!busy} onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg border border-zinc-700 disabled:opacity-40">Upload file</button>
+                  className="px-3 py-2 rounded-lg bg-zinc-100 text-black font-medium disabled:opacity-40 whitespace-nowrap">Add</button>
+          <button disabled={!!busy} onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg border border-zinc-700 disabled:opacity-40 whitespace-nowrap">Upload</button>
           <input ref={fileRef} type="file" accept="audio/*,video/*" className="hidden"
                  onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void run("file", () => addSeedFile(st.id, f)); }} />
         </div>
         {busy && <p className="text-sm text-zinc-400 animate-pulse">Fetching and listening ({busy}) — transcription + sound tags take ~10 s per song…</p>}
         {err && <p className="text-sm text-red-400">{err}</p>}
         {st.seeds.map((s) => (
-          <div key={s.id} className="border border-zinc-800 rounded-xl px-4 py-3 flex flex-col gap-1">
-            <div className="flex items-center gap-3">
-              <div className="flex-1">
-                <div className="font-medium">{s.title}</div>
+          <div key={s.id} className="border border-zinc-800 rounded-xl px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-start gap-3">
+              <div className="flex-1 min-w-0">
+                <div className="font-medium truncate" title={s.title}>{s.title}</div>
                 <div className="text-xs text-zinc-400">{seedLine(s)}</div>
               </div>
-              <audio src={seedAudioUrl(s.id)} controls preload="none" className="h-8" />
-              <button onClick={() => run("delete", () => deleteSeed(s.id))} className="text-xs text-zinc-500 hover:text-red-400">remove</button>
+              <button onClick={() => run("delete", () => deleteSeed(s.id))} className="text-xs text-zinc-500 hover:text-red-400 whitespace-nowrap">remove</button>
             </div>
+            <audio src={seedAudioUrl(s.id)} controls preload="none" className="h-8 w-full" />
             {s.style_guess && <div className="text-xs text-zinc-500">sounds like: {s.style_guess}</div>}
             {s.promoted_sections?.length ? <div className="text-xs text-amber-300">tune sits in the instrument line in: {s.promoted_sections.join(", ")} — covers will sing it</div> : null}
           </div>

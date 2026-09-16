@@ -117,7 +117,7 @@ export function radial(bins = 48): Scene {
   const PALETTE = [0xc8452b, 0xe07a1f, 0xe9b83a, 0xf0dfb5, 0x3f8f8a, 0x6b7f3a];
   const mk = (w: number, d: number) => { const g = new THREE.BoxGeometry(w, 1, d); g.translate(0, 0.5, 0); return g; };
   const ringGeo = mk(0.05, 0.05), rayGeo = mk(0.1, 0.1), shadowGeo = mk(0.1, 0.06);
-  const flat = () => new THREE.MeshBasicMaterial({ vertexColors: true });
+  const flat = () => new THREE.MeshBasicMaterial();   // per-instance colors come from setColorAt; vertexColors would multiply by a missing attribute (= black)
   const ring = new THREE.InstancedMesh(ringGeo, flat(), N), rays = new THREE.InstancedMesh(rayGeo, flat(), N), shadow = new THREE.InstancedMesh(shadowGeo, flat(), N);
   for (const m of [shadow, ring, rays]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(m); }
   // centre: disc + grooves + orbits + emblem

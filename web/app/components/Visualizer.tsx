@@ -77,15 +77,15 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const body = (
-    <div className={background ? "fixed inset-0 z-0 bg-black" : "relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800"}>
+    <div className={background ? "fixed inset-y-0 left-0 right-0 sm:right-[420px] z-0 bg-black" : "relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800"}>
       <div ref={host} className="absolute inset-0" />
-      <div className="absolute top-2 right-2 flex gap-1 text-[11px] text-zinc-400">
+      <div className="absolute bottom-3 right-3 flex gap-1 text-[11px] text-zinc-500">
         {Object.keys(SCENES).map((n) => <button key={n} onClick={() => onScene(n)} className={`px-2 py-0.5 rounded border ${n === sceneName ? "border-zinc-300 text-zinc-100" : "border-zinc-800"}`}>{n}</button>)}
         <button onClick={fullscreen} className="px-2 py-0.5 rounded border border-zinc-800">⛶</button>
         <span className="px-1 font-mono">{fps} fps</span>
       </div>
-      {label && <div className="absolute top-3 left-4 text-zinc-500 text-xs tracking-[0.3em] uppercase pointer-events-none">{label}</div>}
-      {song && <div className="absolute bottom-3 left-4 text-zinc-400 text-sm pointer-events-none">{song.title}</div>}
+      {label && <div className="absolute top-4 left-5 text-zinc-500 text-xs tracking-[0.3em] uppercase pointer-events-none">{label}</div>}
+      {song && <div className="absolute bottom-4 left-5 text-zinc-300 text-base pointer-events-none">{song.title}</div>}
       {!player && <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-sm">press Play</div>}
     </div>
   );

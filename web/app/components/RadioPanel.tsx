@@ -72,11 +72,12 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
             <button onClick={onStop} className="px-5 py-2 rounded-full border border-zinc-600">■ Stop</button>
           )}
           <button onClick={onSkip} disabled={!song} className="px-3 py-2 rounded-full border border-zinc-800 disabled:opacity-40">⏭ Skip</button>
-          <span className="text-xs text-zinc-500 font-mono">{status?.state ?? "…"} · {status?.ready.length ?? 0} cued</span>
-          <label className="ml-auto text-xs text-zinc-400 flex items-center gap-2">covers ↔ new
-            <input type="range" min={0} max={2} step={0.25} value={covers} onChange={async (e) => onStation(await patchSettings(sid, { covers: Number(e.target.value) }))} />
-          </label>
+          <span className="text-xs text-zinc-500 font-mono whitespace-nowrap ml-auto">{status?.state ?? "…"} · {status?.ready.length ?? 0} cued</span>
         </div>
+        <label className="text-xs text-zinc-400 flex items-center gap-3"><span className="whitespace-nowrap">covers</span>
+          <input type="range" min={0} max={2} step={0.25} value={covers} onChange={async (e) => onStation(await patchSettings(sid, { covers: Number(e.target.value) }))} className="flex-1 accent-amber-500" />
+          <span className="whitespace-nowrap">new</span>
+        </label>
         {song ? (
           <div className="flex flex-col gap-1">
             <div className="text-2xl font-semibold">{song.title}</div>
