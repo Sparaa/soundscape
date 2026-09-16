@@ -1,0 +1,50 @@
+# Soundscape — self-hosted dynamic radio. Sidecars come from their own repos/images (shared with vidmakr):
+#   docker build -t yue2-sidecar ../yue2-sidecar && docker build -t sheetsage-sidecar ../sheetsage-sidecar && docker build -t clipgrab-sidecar ../clipgrab-sidecar
+services:
+  web:
+    build: ./web
+    container_name: soundscape-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:${API_PORT:-3021}
+    ports: ["127.0.0.1:${WEB_PORT:-3020}:3000"]
+    depends_on: [api]
+  api:
+    build: ./api
+    container_name: soundscape-api
+    restart: unless-stopped
+    environment:
+      YUE2_URL: ${YUE2_URL:-http://yue2:3015}
+      SHEETSAGE_URL: ${SHEETSAGE_URL:-http://sheetsage:3016}
+      CLIPGRAB_URL: ${CLIPGRAB_URL:-http://clipgrab:3014}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://host.docker.internal:30000/v1}
+      LLM_MODEL: ${LLM_MODEL:-qwen3.8-27b}
+      LLM_API_KEY: ${LLM_API_KEY:-local}
+      LIBRARY_DIR: /library
+    volumes: ["${LIBRARY_DIR:-./library}:/library"]
+    ports: ["127.0.0.1:${API_PORT:-3021}:3021"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+  yue2:
+    image: yue2-sidecar:latest
+    container_name: soundscape-yue2
+    restart: unless-stopped
+    environment: {SCRATCH_DIR: /scratch, HF_HOME: /data/hf-cache, MUSIC_MODEL: m-a-p/YuE2-3B, MUSIC_VAE: m-a-p/YuE2-Vae, MUSIC_LOCAL_FILES_ONLY: "0", MUSIC_BUDGET_GIB: "20", MUSIC_IDLE_UNLOAD_MIN: "10", NVIDIA_VISIBLE_DEVICES: "${SOUNDSCAPE_GPU_UUID:-all}", NVIDIA_DRIVER_CAPABILITIES: compute,utility}
+    volumes: ["yue2-hf-cache:/data/hf-cache"]
+    tmpfs: ["/scratch:size=2g"]
+    deploy: {resources: {reservations: {devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]}}}
+  sheetsage:
+    image: sheetsage-sidecar:latest
+    container_name: soundscape-sheetsage
+    restart: unless-stopped
+    environment: {SCRATCH_DIR: /scratch, HF_HOME: /data/hf-cache, SHEETSAGE_MODEL: m-a-p/SheetSage2, SHEETSAGE_LOCAL_FILES_ONLY: "0", SHEETSAGE_DTYPE: bf16, SHEETSAGE_IDLE_UNLOAD_MIN: "10", NVIDIA_VISIBLE_DEVICES: "${SOUNDSCAPE_GPU_UUID:-all}", NVIDIA_DRIVER_CAPABILITIES: compute,utility}
+    volumes: ["sheetsage-hf-cache:/data/hf-cache"]
+    tmpfs: ["/scratch:size=1g"]
+    deploy: {resources: {reservations: {devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]}}}
+  clipgrab:
+    image: clipgrab-sidecar:latest
+    container_name: soundscape-clipgrab
+    restart: unless-stopped
+    tmpfs: ["/scratch:size=2g"]
+volumes:
+  yue2-hf-cache: {}
+  sheetsage-hf-cache: {}
