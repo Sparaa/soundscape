@@ -1,0 +1,76 @@
+"use client";
+import Link from "next/link";
+import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { addSeedFile, addSeedUrl, deleteSeed, getStation, seedAudioUrl, type Station } from "@/lib/api";
+import { TAG_ORDER, profileHeadline, seedLine, tagChips } from "@/lib/profile";
+
+export default function StationPage() {
+  const { id } = useParams<{ id: string }>();
+  const [st, setSt] = useState<Station | null>(null);
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => { getStation(id).then(setSt).catch((e) => setErr(String(e))); }, [id]);
+  const run = async (label: string, fn: () => Promise<Station>) => {
+    setErr(null); setBusy(label);
+    try { setSt(await fn()); } catch (e) { setErr(String(e)); } finally { setBusy(null); }
+  };
+  if (!st) return <main className="p-8 text-zinc-400">{err ?? "Loading…"}</main>;
+  const p = st.profile;
+  return (
+    <main className="min-h-screen max-w-3xl mx-auto flex flex-col gap-8 p-8">
+      <header className="flex items-baseline gap-4">
+        <Link href="/" className="text-zinc-500 hover:text-zinc-200">← stations</Link>
+        <h1 className="text-3xl font-semibold tracking-tight">{st.name}</h1>
+      </header>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs uppercase tracking-widest text-zinc-500">Seeds</h2>
+        <div className="flex gap-2">
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a YouTube / any link…" disabled={!!busy}
+                 className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-zinc-500" />
+          <button disabled={!!busy || !url.trim()} onClick={() => run("link", () => addSeedUrl(st.id, url.trim()).then((s) => { setUrl(""); return s; }))}
+                  className="px-3 py-2 rounded-lg bg-zinc-100 text-black font-medium disabled:opacity-40">Add link</button>
+          <button disabled={!!busy} onClick={() => fileRef.current?.click()} className="px-3 py-2 rounded-lg border border-zinc-700 disabled:opacity-40">Upload file</button>
+          <input ref={fileRef} type="file" accept="audio/*,video/*" className="hidden"
+                 onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void run("file", () => addSeedFile(st.id, f)); }} />
+        </div>
+        {busy && <p className="text-sm text-zinc-400 animate-pulse">Fetching and listening ({busy}) — transcription + sound tags take ~10 s per song…</p>}
+        {err && <p className="text-sm text-red-400">{err}</p>}
+        {st.seeds.map((s) => (
+          <div key={s.id} className="border border-zinc-800 rounded-xl px-4 py-3 flex flex-col gap-1">
+            <div className="flex items-center gap-3">
+              <div className="flex-1">
+                <div className="font-medium">{s.title}</div>
+                <div className="text-xs text-zinc-400">{seedLine(s)}</div>
+              </div>
+              <audio src={seedAudioUrl(s.id)} controls preload="none" className="h-8" />
+              <button onClick={() => run("delete", () => deleteSeed(s.id))} className="text-xs text-zinc-500 hover:text-red-400">remove</button>
+            </div>
+            {s.style_guess && <div className="text-xs text-zinc-500">sounds like: {s.style_guess}</div>}
+            {s.promoted_sections?.length ? <div className="text-xs text-amber-300">tune sits in the instrument line in: {s.promoted_sections.join(", ")} — covers will sing it</div> : null}
+          </div>
+        ))}
+      </section>
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs uppercase tracking-widest text-zinc-500">Station profile</h2>
+        {!p && <p className="text-zinc-500 text-sm">Add a seed to build the profile the agent composes from.</p>}
+        {p && (
+          <div className="border border-zinc-800 rounded-xl px-4 py-3 flex flex-col gap-3">
+            <div className="font-medium">{profileHeadline(p)}</div>
+            <div className="text-sm text-zinc-300">{p.style}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
+              {TAG_ORDER.map((cat) => (
+                <div key={cat}><div className="uppercase tracking-widest text-zinc-500 mb-1">{cat}</div>
+                  <div className="flex flex-wrap gap-1">{tagChips(p, cat).map((c) => <span key={c} className="px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800">{c}</span>)}</div></div>
+              ))}
+            </div>
+            <div className="text-xs text-zinc-400">form: {p.sections.join(" → ")}</div>
+            {Object.keys(p.phrases).length > 0 && <div className="text-xs text-zinc-500">lines per section: {Object.entries(p.phrases).map(([k, v]) => `${k} ${v.length}×(${v.join(",")})`).join(" · ")}</div>}
+          </div>
+        )}
+      </section>
+    </main>
+  );
+}

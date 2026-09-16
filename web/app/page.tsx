@@ -1,22 +1,51 @@
 "use client";
-import { useEffect, useState } from "react";
-import { getHealth, sidecarLine, type Health } from "@/lib/api";
+import Link from "next/link";
+import { useCallback, useEffect, useState } from "react";
+import { createStation, deleteStation, getHealth, listStations, sidecarLine, type Health, type Station } from "@/lib/api";
+import { profileHeadline } from "@/lib/profile";
 
 export default function Home() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [stations, setStations] = useState<Station[]>([]);
+  const [name, setName] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  useEffect(() => {
+  const refresh = useCallback(() => {
     getHealth().then(setHealth).catch((e) => setErr(String(e)));
+    listStations().then(setStations).catch((e) => setErr(String(e)));
   }, []);
+  useEffect(refresh, [refresh]);
+  const onCreate = async () => {
+    if (!name.trim()) return;
+    try { const st = await createStation(name.trim()); setName(""); setStations((s) => [st, ...s]); } catch (e) { setErr(String(e)); }
+  };
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center gap-6 p-8">
-      <h1 className="text-5xl font-semibold tracking-tight">Soundscape</h1>
-      <p className="text-zinc-400">A radio that never runs out of songs.</p>
-      <div className="text-sm text-zinc-300 font-mono flex flex-col gap-1">
-        {err && <span className="text-red-400">api offline: {err}</span>}
+    <main className="min-h-screen max-w-3xl mx-auto flex flex-col gap-8 p-8">
+      <header>
+        <h1 className="text-5xl font-semibold tracking-tight">Soundscape</h1>
+        <p className="text-zinc-400 mt-1">A radio that never runs out of songs.</p>
+      </header>
+      <section className="flex gap-2">
+        <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onCreate()} placeholder="New station name…"
+               className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-zinc-500" />
+        <button onClick={onCreate} className="px-4 py-2 rounded-lg bg-zinc-100 text-black font-medium">Create</button>
+      </section>
+      <section className="flex flex-col gap-2">
+        {stations.length === 0 && <p className="text-zinc-500">No stations yet — create one, then seed it with a song.</p>}
+        {stations.map((s) => (
+          <div key={s.id} className="flex items-center gap-3 border border-zinc-800 rounded-xl px-4 py-3">
+            <Link href={`/stations/${s.id}`} className="flex-1">
+              <div className="font-medium">{s.name}</div>
+              <div className="text-xs text-zinc-400">{s.profile ? profileHeadline(s.profile) : `${s.seeds.length} seed(s) — add a song to build the profile`}</div>
+            </Link>
+            <button onClick={() => deleteStation(s.id).then(refresh).catch((e) => setErr(String(e)))} className="text-xs text-zinc-500 hover:text-red-400">delete</button>
+          </div>
+        ))}
+      </section>
+      <footer className="text-xs text-zinc-500 font-mono flex flex-col gap-0.5">
+        {err && <span className="text-red-400">{err}</span>}
         {health && Object.entries(health.sidecars).map(([n, h]) => <span key={n}>{sidecarLine(n, h)}</span>)}
-        {health && <span>llm · {health.llm.model} · {health.llm.base_url}</span>}
-      </div>
+        {health && <span>llm · {health.llm.model}</span>}
+      </footer>
     </main>
   );
 }

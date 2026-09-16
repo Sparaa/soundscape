@@ -33,11 +33,13 @@ See `docs/plan.md` for the design, phases and decisions.
 ## Run
 
 ```bash
-cp .env.example .env          # GPU uuid, LLM endpoint, library path
-docker compose up -d
+cp .env.example .env                       # GPU uuid, LLM endpoint, library path
+docker compose --profile gpu up -d         # everything, GPU sidecars included
 open http://localhost:3020
 ```
+Already running `yue2-sidecar` / `sheetsage-sidecar` elsewhere (e.g. shared with another app)? Set `YUE2_URL` /
+`SHEETSAGE_URL` in `.env` and start without the profile: `docker compose up -d`.
 
 ## Status
 
-Phase 0 (skeleton) — see `docs/plan.md` §8.
+Phase 1 — stations, seeds (upload or link), analysis and the station profile. Next: the agent + player (Phase 2). See `docs/plan.md` §8.

@@ -25,6 +25,7 @@ services:
     ports: ["127.0.0.1:${API_PORT:-3021}:3021"]
     extra_hosts: ["host.docker.internal:host-gateway"]
   yue2:
+    profiles: ["gpu"]            # `docker compose --profile gpu up -d` runs the GPU sidecars here; without it, point *_URL at existing ones
     image: yue2-sidecar:latest
     container_name: soundscape-yue2
     restart: unless-stopped
@@ -33,6 +34,7 @@ services:
     tmpfs: ["/scratch:size=2g"]
     deploy: {resources: {reservations: {devices: [{driver: nvidia, count: 1, capabilities: [gpu]}]}}}
   sheetsage:
+    profiles: ["gpu"]            # `docker compose --profile gpu up -d` runs the GPU sidecars here; without it, point *_URL at existing ones
     image: sheetsage-sidecar:latest
     container_name: soundscape-sheetsage
     restart: unless-stopped
