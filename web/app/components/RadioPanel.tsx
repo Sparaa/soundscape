@@ -62,10 +62,9 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   const live = status?.state === "playing" || status?.state === "warming";
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-xs uppercase tracking-widest text-zinc-500">Radio</h2>
-      <Visualizer player={playerObj} song={song} tags={station.profile?.tags ?? null} sceneName={scene} label={`Soundscape · ${station.name}`}
+      <Visualizer player={playerObj} song={song} tags={station.profile?.tags ?? null} sceneName={scene} label={`Soundscape · ${station.name}`} background
                   onScene={(n) => { setScene(n); try { localStorage.setItem("soundscape.scene", n); } catch { /* per-viewer convenience only */ } }} />
-      <div className="border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
+      <div className="pane flex flex-col gap-3">
         <div className="flex items-center gap-3">
           {!live ? (
             <button onClick={onPlay} disabled={!station.profile} className="px-5 py-2 rounded-full bg-zinc-100 text-black font-medium disabled:opacity-40">▶ Play</button>

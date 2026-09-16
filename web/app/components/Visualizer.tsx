@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import * as THREE from "three";
 import type { Song } from "@/lib/api";
 import { sectionCues, type SectionCue } from "@/lib/abc";
@@ -11,9 +12,9 @@ export const FEED_CHANNEL = "soundscape-visual-feed";
 
 /** Full-panel three.js visualizer driven by the player's AnalyserNode. Publishes each VisualFrame on a
  * BroadcastChannel (`soundscape-visual-feed`) and as `window.soundscapeFeed` — the feed contract (docs/visual-feed.md). */
-export default function Visualizer({ player, song, tags, sceneName, onScene, label }: {
+export default function Visualizer({ player, song, tags, sceneName, onScene, label, background }: {
   player: RadioPlayer | null; song: Song | null; tags: { mood?: { label: string }[]; genre?: { label: string }[] } | null;
-  sceneName: string; onScene: (n: string) => void; label?: string;
+  sceneName: string; onScene: (n: string) => void; label?: string; background?: boolean;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [fps, setFps] = useState(0);
@@ -73,8 +74,10 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
   }, [player, sceneName]);
 
   const fullscreen = () => { const el = host.current?.parentElement; if (!el) return; if (document.fullscreenElement) void document.exitFullscreen(); else void el.requestFullscreen(); };
-  return (
-    <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800">
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const body = (
+    <div className={background ? "fixed inset-0 z-0 bg-black" : "relative w-full aspect-video bg-black rounded-xl overflow-hidden border border-zinc-800"}>
       <div ref={host} className="absolute inset-0" />
       <div className="absolute top-2 right-2 flex gap-1 text-[11px] text-zinc-400">
         {Object.keys(SCENES).map((n) => <button key={n} onClick={() => onScene(n)} className={`px-2 py-0.5 rounded border ${n === sceneName ? "border-zinc-300 text-zinc-100" : "border-zinc-800"}`}>{n}</button>)}
@@ -86,4 +89,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
       {!player && <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-sm">press Play</div>}
     </div>
   );
+  // background mode renders straight into <body>: a fixed layer must not sit under a blurred/transformed ancestor
+  if (background) return mounted ? createPortal(body, document.body) : null;
+  return body;
 }

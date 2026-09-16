@@ -21,13 +21,14 @@ export default function StationPage() {
   if (!st) return <main className="p-8 text-zinc-400">{err ?? "Loading…"}</main>;
   const p = st.profile;
   return (
-    <main className="min-h-screen max-w-3xl mx-auto flex flex-col gap-8 p-8">
-      <header className="flex items-baseline gap-4">
-        <Link href="/" className="text-zinc-500 hover:text-zinc-200">← stations</Link>
-        <h1 className="text-3xl font-semibold tracking-tight">{st.name}</h1>
+    <main className="min-h-screen">
+      <aside className="fixed top-0 right-0 h-screen w-full sm:w-[420px] overflow-y-auto p-4 flex flex-col gap-4 z-10">
+      <header className="pane flex items-baseline gap-3">
+        <Link href="/" className="text-zinc-400 hover:text-zinc-100 text-sm">← stations</Link>
+        <h1 className="text-xl font-semibold tracking-tight">{st.name}</h1>
       </header>
       <RadioPanel station={st} onStation={setSt} />
-      <section className="flex flex-col gap-2">
+      <section className="pane flex flex-col gap-2">
         <h2 className="text-xs uppercase tracking-widest text-zinc-500">Seeds</h2>
         <div className="flex gap-2">
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a YouTube / any link…" disabled={!!busy}
@@ -55,7 +56,7 @@ export default function StationPage() {
           </div>
         ))}
       </section>
-      <section className="flex flex-col gap-2">
+      <section className="pane flex flex-col gap-2">
         <h2 className="text-xs uppercase tracking-widest text-zinc-500">Station profile</h2>
         {!p && <p className="text-zinc-500 text-sm">Add a seed to build the profile the agent composes from.</p>}
         {p && (
@@ -73,6 +74,7 @@ export default function StationPage() {
           </div>
         )}
       </section>
+      </aside>
     </main>
   );
 }
