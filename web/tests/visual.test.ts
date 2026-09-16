@@ -1,0 +1,57 @@
+import { describe, expect, it } from "vitest";
+import { sectionAt, sectionCues } from "@/lib/abc";
+import { BeatClock, bandEnergies, frame, paletteFor } from "@/lib/visual";
+
+const SCORE = ["X:1", "M:4/4", "L:1/16", "Q:1/4=120", "V: Vocal", "V: Ins", "K:C",
+  "% intro", "V: Vocal", "Z|Z|", "V: Ins", "C4E4G4c4|C4E4G4c4|",
+  "% verse", "V: Vocal", "C2D2E2F2G2A2B2c2|", "V: Ins", "Z|",
+  "% chorus", "V: Vocal", "c4c4c4c4|", "V: Ins", "Z|"].join("\n");
+
+describe("section cues", () => {
+  it("finds section starts from the planned score and rescales to the actual length", () => {
+    const cues = sectionCues(SCORE);                 // 120 BPM: one bar = 2 s
+    expect(cues).toEqual([{ label: "intro", t: 0 }, { label: "verse", t: 4 }, { label: "chorus", t: 6 }]);
+    expect(sectionCues(SCORE, 16).map((c) => c.t)).toEqual([0, 8, 12]);
+    expect(sectionAt(cues, 5)?.label).toBe("verse");
+    expect(sectionAt(cues, 100)?.label).toBe("chorus");
+    expect(sectionCues("X:1\nK:C\n% verse\nV: Vocal\nz|")).toEqual([{ label: "verse", t: 0 }]);
+  });
+});
+
+describe("bands + beat clock", () => {
+  it("splits the FFT into bands", () => {
+    const fft = new Uint8Array(1024).fill(0);
+    for (let i = 0; i < 4; i++) fft[i] = 255;        // 44.1k/2048 = 21.5 Hz per bin → bins 1-3 are bass
+    const b = bandEnergies(fft, 44100, 2048);
+    expect(b.bass).toBeGreaterThan(0.4);
+    expect(b.treble).toBe(0);
+    expect(b.rms).toBeGreaterThan(0);
+  });
+  it("keeps the planned tempo and pulls the phase toward onsets", () => {
+    const c = new BeatClock(120, 0);
+    expect(c.period).toBe(0.5);
+    expect(c.phase(0.25)).toBeCloseTo(0.5);
+    expect(c.beatIndex(2.1)).toBe(4);
+    expect(c.bar(2.1)).toBe(1);
+    // a hit slightly late (t=0.55, phase 0.1) pulls t0 forward a little
+    c.update(0.5, 0.1);
+    expect(c.update(0.55, 0.9)).toBe(true);
+    expect(c.hit).toBe(1);
+    expect(c.phase(0.55)).toBeLessThan(0.1);
+    expect(c.update(0.6, 0.95)).toBe(false);        // refractory: no double trigger within half a beat
+  });
+});
+
+describe("palette + frame", () => {
+  it("is deterministic from tags", () => {
+    const p = paletteFor({ mood: [{ label: "dark" }], genre: [{ label: "EDM" }] });
+    expect(p.hue).toBe(260); expect(p.sat).toBe(0.55); expect(p.name).toBe("dark");
+    expect(paletteFor({ genre: [{ label: "EDM" }] }).hue).toBe(190);
+    expect(paletteFor(null, 3).hue).toBe(141);
+  });
+  it("builds a feed frame with section progress", () => {
+    const c = new BeatClock(120, 0);
+    const f = frame(5, { bass: 0.5, mid: 0.2, treble: 0.1, rms: 0.3 }, c, sectionCues(SCORE), paletteFor(null), { id: "s", title: "T", mode: "inspired" }, 8);
+    expect(f.v).toBe(1); expect(f.section).toEqual({ label: "verse", index: 1, progress: 0.5 }); expect(f.beat.index).toBe(10);
+  });
+});

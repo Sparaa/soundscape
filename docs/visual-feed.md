@@ -1,0 +1,20 @@
+# Visual feed contract (v1)
+
+Every animation tick the web visualizer publishes one `VisualFrame` (JSON) on `BroadcastChannel("soundscape-visual-feed")`
+and as `window.soundscapeFeed`. A native front end (the Vulkan idea) consumes the same frames — over a WebSocket bridge
+later — so scenes port without re-deriving audio analysis.
+
+```ts
+interface VisualFrame {
+  v: 1;
+  t: number;                                   // playback position, seconds
+  bands: { bass: number; mid: number; treble: number; rms: number };   // 0..1 (bass <150 Hz, mid 150–2k, treble >2k)
+  beat: { phase: number; index: number; bar: number; bpm: number; hit: number };
+        // phase 0..1 within the beat (planned BPM, phase-locked to bass onsets), hit = 1 on an onset, decays per frame
+  section: { label: string; index: number; progress: number } | null;  // from the song's planned score (ABC % labels)
+  palette: { hue: number; sat: number; light: number; accentHue: number; name: string };  // from the station's mood/genre
+  song: { id: string; title: string | null; mode: string | null } | null;
+}
+```
+Sources: `web/lib/visual.ts` (bands, `BeatClock`, `paletteFor`, `frame`), `web/lib/abc.ts` (`sectionCues`). Scenes in
+`web/lib/scenes.ts` take a frame and a `dt`; that is the whole interface a scene needs.
