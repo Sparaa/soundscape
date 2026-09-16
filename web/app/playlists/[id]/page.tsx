@@ -13,7 +13,7 @@ export default function PlaylistPage() {
   const [pl, setPl] = useState<Playlist | null>(null);
   const [song, setSong] = useState<Song | null>(null);
   const [player, setPlayer] = useState<RadioPlayer | null>(null);
-  const [scene, setScene] = useState("nebula");
+  const [scene, setScene] = useState("radial");
   const idx = useRef(0);
   const plRef = useRef<Playlist | null>(null); plRef.current = pl;
   useEffect(() => { getPlaylist(id).then(setPl).catch(() => undefined); }, [id]);

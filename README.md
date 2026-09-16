@@ -20,7 +20,9 @@ Self-hosted, single-user, personal use. Not a service.
   the station (CLAP similarity), and the agent tries again.
 - **Radio** — press Play. The buffer keeps two songs ready and one spare after Stop. Skip, save, ♥ more like this,
   👎 less like this (votes steer the station's profile).
-- **Visualizer** — three.js scenes driven by the player's analyser: a beat clock locked to the planned BPM and nudged
+- **Visualizer** — three.js scenes driven by the player's analyser (default: a radial analyzer — ring bars, colored
+  frequency rays with bass at the bottom, afterglow beams, a starfield disc and a rotating emblem; drop your logo at
+  `web/public/logo.png`): a beat clock locked to the planned BPM and nudged
   by bass onsets, section changes from the planned score, palettes from the station's mood. Every frame is also
   published as a small JSON feed (`docs/visual-feed.md`) so a native front end can render the same data.
 - **Library & playlists** — saved and liked songs persist on disk (FLAC + a JSON with style, lyrics, score and plan);

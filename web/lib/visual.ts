@@ -21,6 +21,21 @@ export function bandEnergies(fft: Uint8Array | number[], sampleRate: number, fft
   return { bass: sum(20, 150), mid: sum(150, 2000), treble: sum(2000, 12000), rms: Math.sqrt(sq / Math.max(1, bins)) };
 }
 
+/** Byte FFT → n log-spaced bins between lo and hi Hz (0..1 each; mean of the bins covered, at least one). This is what
+ * bar/ray visualizers want: equal visual weight per octave instead of per Hz. */
+export function logSpectrum(fft: Uint8Array | number[], sampleRate: number, fftSize: number, n = 64, lo = 30, hi = 9000): number[] {
+  const hzPerBin = sampleRate / fftSize, out = new Array<number>(n);
+  const ratio = Math.log(hi / lo) / n;
+  for (let i = 0; i < n; i++) {
+    const f0 = lo * Math.exp(i * ratio), f1 = lo * Math.exp((i + 1) * ratio);
+    const a = Math.max(0, Math.floor(f0 / hzPerBin)), b = Math.max(a, Math.min(fft.length - 1, Math.floor(f1 / hzPerBin)));
+    let sum = 0;
+    for (let k = a; k <= b; k++) sum += fft[k];
+    out[i] = sum / ((b - a + 1) * 255);
+  }
+  return out;
+}
+
 /** Beat clock: phase runs at the planned BPM; bass onsets (energy jumps) pull the phase toward the hit (PLL gain
  * `lock`), so beats stay in step even when the mix dips. */
 export class BeatClock {
@@ -76,15 +91,17 @@ export interface VisualFrame {
   section: { label: string; index: number; progress: number } | null;
   palette: Palette;
   song: { id: string; title: string | null; mode: string | null } | null;
+  spectrum?: number[];             // optional: 64 log-spaced bins 30 Hz–9 kHz, 0..1 (bar/ray scenes)
 }
 
 export function frame(t: number, bands: Bands, clock: BeatClock, cues: SectionCue[], palette: Palette,
-                      song: VisualFrame["song"], durationS: number): VisualFrame {
+                      song: VisualFrame["song"], durationS: number, spectrum?: number[]): VisualFrame {
   let idx = -1;
   for (let i = 0; i < cues.length; i++) if (cues[i].t <= t) idx = i; else break;
   const section = idx >= 0 ? (() => {
     const start = cues[idx].t, end = idx + 1 < cues.length ? cues[idx + 1].t : Math.max(durationS, start + 1);
     return { label: cues[idx].label, index: idx, progress: Math.min(1, Math.max(0, (t - start) / Math.max(0.001, end - start))) };
   })() : null;
-  return { v: 1, t, bands, beat: { phase: clock.phase(t), index: clock.beatIndex(t), bar: clock.bar(t), bpm: clock.bpm, hit: clock.hit }, section, palette, song };
+  return { v: 1, t, bands, beat: { phase: clock.phase(t), index: clock.beatIndex(t), bar: clock.bar(t), bpm: clock.bpm, hit: clock.hit }, section, palette, song,
+           ...(spectrum ? { spectrum } : {}) };
 }

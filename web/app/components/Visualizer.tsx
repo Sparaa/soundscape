@@ -4,16 +4,16 @@ import * as THREE from "three";
 import type { Song } from "@/lib/api";
 import { sectionCues, type SectionCue } from "@/lib/abc";
 import { SCENES, type Scene } from "@/lib/scenes";
-import { BeatClock, bandEnergies, frame, paletteFor, type Palette, type VisualFrame } from "@/lib/visual";
+import { BeatClock, bandEnergies, frame, logSpectrum, paletteFor, type Palette, type VisualFrame } from "@/lib/visual";
 import type { RadioPlayer } from "@/lib/player";
 
 export const FEED_CHANNEL = "soundscape-visual-feed";
 
 /** Full-panel three.js visualizer driven by the player's AnalyserNode. Publishes each VisualFrame on a
  * BroadcastChannel (`soundscape-visual-feed`) and as `window.soundscapeFeed` — the feed contract (docs/visual-feed.md). */
-export default function Visualizer({ player, song, tags, sceneName, onScene }: {
+export default function Visualizer({ player, song, tags, sceneName, onScene, label }: {
   player: RadioPlayer | null; song: Song | null; tags: { mood?: { label: string }[]; genre?: { label: string }[] } | null;
-  sceneName: string; onScene: (n: string) => void;
+  sceneName: string; onScene: (n: string) => void; label?: string;
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [fps, setFps] = useState(0);
@@ -30,7 +30,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene }: {
     const scene3 = new THREE.Scene();
     const cam = new THREE.PerspectiveCamera(60, 1, 0.1, 100);
     cam.position.set(0, 0, 3.2);
-    let sc: Scene = (SCENES[sceneName] ?? SCENES.nebula)();
+    let sc: Scene = (SCENES[sceneName] ?? SCENES.radial)();
     scene3.add(sc.object);
     const analyser = player.analyser;
     const fft = new Uint8Array(analyser.frequencyBinCount);
@@ -55,7 +55,8 @@ export default function Visualizer({ player, song, tags, sceneName, onScene }: {
       const bands = bandEnergies(fft, player.ctx.sampleRate, analyser.fftSize);
       const pos = player.position();
       clock.update(pos.t, bands.bass);
-      const f: VisualFrame = frame(pos.t, bands, clock, cues, palette, s ? { id: s.id, title: s.title, mode: s.plan?.mode ?? null } : null, pos.d);
+      const spectrum = logSpectrum(fft, player.ctx.sampleRate, analyser.fftSize, 64);
+      const f: VisualFrame = frame(pos.t, bands, clock, cues, palette, s ? { id: s.id, title: s.title, mode: s.plan?.mode ?? null } : null, pos.d, spectrum);
       sc.update(f, dt);
       renderer.render(scene3, cam);
       (window as unknown as { soundscapeFeed?: VisualFrame }).soundscapeFeed = f;
@@ -80,6 +81,8 @@ export default function Visualizer({ player, song, tags, sceneName, onScene }: {
         <button onClick={fullscreen} className="px-2 py-0.5 rounded border border-zinc-800">⛶</button>
         <span className="px-1 font-mono">{fps} fps</span>
       </div>
+      {label && <div className="absolute top-3 left-4 text-zinc-500 text-xs tracking-[0.3em] uppercase pointer-events-none">{label}</div>}
+      {song && <div className="absolute bottom-3 left-4 text-zinc-400 text-sm pointer-events-none">{song.title}</div>}
       {!player && <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-sm">press Play</div>}
     </div>
   );

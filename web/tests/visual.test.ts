@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sectionAt, sectionCues } from "@/lib/abc";
-import { BeatClock, bandEnergies, frame, paletteFor } from "@/lib/visual";
+import { BeatClock, bandEnergies, frame, logSpectrum, paletteFor } from "@/lib/visual";
 
 const SCORE = ["X:1", "M:4/4", "L:1/16", "Q:1/4=120", "V: Vocal", "V: Ins", "K:C",
   "% intro", "V: Vocal", "Z|Z|", "V: Ins", "C4E4G4c4|C4E4G4c4|",
@@ -53,5 +53,21 @@ describe("palette + frame", () => {
     const c = new BeatClock(120, 0);
     const f = frame(5, { bass: 0.5, mid: 0.2, treble: 0.1, rms: 0.3 }, c, sectionCues(SCORE), paletteFor(null), { id: "s", title: "T", mode: "inspired" }, 8);
     expect(f.v).toBe(1); expect(f.section).toEqual({ label: "verse", index: 1, progress: 0.5 }); expect(f.beat.index).toBe(10);
+  });
+});
+
+describe("logSpectrum", () => {
+  it("gives equal weight per octave and rides along in the frame", () => {
+    const fft = new Uint8Array(1024).fill(0);
+    for (let i = 1; i < 8; i++) fft[i] = 255;         // 21.5–172 Hz hot
+    const s = logSpectrum(fft, 44100, 2048, 16);
+    expect(s).toHaveLength(16);
+    expect(s[0]).toBeGreaterThan(0.9);                // bass bins full
+    expect(s[15]).toBe(0);                            // treble empty
+    expect(s.slice(0, 5).every((v) => v > 0.5)).toBe(true);
+    const c = new BeatClock(120, 0);
+    const f = frame(1, { bass: 1, mid: 0, treble: 0, rms: 0.5 }, c, [], paletteFor(null), null, 10, s);
+    expect(f.spectrum).toHaveLength(16);
+    expect(frame(1, f.bands, c, [], f.palette, null, 10).spectrum).toBeUndefined();
   });
 });

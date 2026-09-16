@@ -12,7 +12,7 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   const [pos, setPos] = useState({ t: 0, d: 0 });
   const [err, setErr] = useState<string | null>(null);
   const [playerObj, setPlayerObj] = useState<RadioPlayer | null>(null);
-  const [scene, setScene] = useState<string>(() => { try { return localStorage.getItem("soundscape.scene") ?? "nebula"; } catch { return "nebula"; } });
+  const [scene, setScene] = useState<string>(() => { try { return localStorage.getItem("soundscape.scene") ?? "radial"; } catch { return "radial"; } });
   const player = useRef<RadioPlayer | null>(null);
   const sid = station.id;
 
@@ -63,7 +63,7 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   return (
     <section className="flex flex-col gap-3">
       <h2 className="text-xs uppercase tracking-widest text-zinc-500">Radio</h2>
-      <Visualizer player={playerObj} song={song} tags={station.profile?.tags ?? null} sceneName={scene}
+      <Visualizer player={playerObj} song={song} tags={station.profile?.tags ?? null} sceneName={scene} label={`Soundscape · ${station.name}`}
                   onScene={(n) => { setScene(n); try { localStorage.setItem("soundscape.scene", n); } catch { /* per-viewer convenience only */ } }} />
       <div className="border border-zinc-800 rounded-xl p-4 flex flex-col gap-3">
         <div className="flex items-center gap-3">

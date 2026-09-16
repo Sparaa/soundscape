@@ -14,7 +14,11 @@ interface VisualFrame {
   section: { label: string; index: number; progress: number } | null;  // from the song's planned score (ABC % labels)
   palette: { hue: number; sat: number; light: number; accentHue: number; name: string };  // from the station's mood/genre
   song: { id: string; title: string | null; mode: string | null } | null;
+  spectrum?: number[];                         // 64 log-spaced bins, 30 Hz–9 kHz, 0..1 — what bar/ray scenes draw
 }
 ```
 Sources: `web/lib/visual.ts` (bands, `BeatClock`, `paletteFor`, `frame`), `web/lib/abc.ts` (`sectionCues`). Scenes in
 `web/lib/scenes.ts` take a frame and a `dt`; that is the whole interface a scene needs.
+
+Scenes: `radial` (default — ring bars, colored rays per bin with bass at the bottom, afterglow beams, starfield disc,
+rotating emblem; drop a `web/public/logo.png` to replace the placeholder trefoil), `nebula`, `rings`.
