@@ -35,12 +35,13 @@ Self-hosted, single-user, personal use. Not a service.
   CLAP load in turn and unload when idle). A 4090 renders a 3-minute song in roughly 70-100 s.
 - An **OpenAI-compatible LLM** endpoint for the writer (local SGLang / vLLM / llama.cpp, or hosted). Small models do fine.
 - The three sidecar images, built from their repos (they are shared with other apps):
-  [`yue2-sidecar`](../yue2-sidecar) · [`sheetsage-sidecar`](../sheetsage-sidecar) · [`clipgrab-sidecar`](../clipgrab-sidecar)
+  [`yue2-sidecar`](https://github.com/Sparaa/yue2-sidecar) · [`sheetsage-sidecar`](https://github.com/Sparaa/sheetsage-sidecar) · [`clipgrab-sidecar`](https://github.com/Sparaa/clipgrab-sidecar)
 
 ## Run
 
 ```bash
-git clone … soundscape && cd soundscape
+git clone https://github.com/Sparaa/soundscape && cd soundscape
+git clone https://github.com/Sparaa/yue2-sidecar ../yue2-sidecar && git clone https://github.com/Sparaa/sheetsage-sidecar ../sheetsage-sidecar && git clone https://github.com/Sparaa/clipgrab-sidecar ../clipgrab-sidecar
 cp .env.example .env                       # GPU uuid, LLM endpoint, library path
 docker build -t yue2-sidecar ../yue2-sidecar && docker build -t sheetsage-sidecar ../sheetsage-sidecar && docker build -t clipgrab-sidecar ../clipgrab-sidecar
 docker compose --profile gpu up -d         # web :3020, api :3021, sidecars
