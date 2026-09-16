@@ -14,7 +14,11 @@ from pydantic import BaseModel
 
 import logging
 
-from . import abc as abclib, analyze, composer, config, db, ingest, llm as llmmod, profile, radio, sidecars
+import asyncio
+
+from fastapi.responses import Response
+
+from . import abc as abclib, analyze, composer, config, db, ingest, library, llm as llmmod, profile, radio, sidecars
 
 log = logging.getLogger("soundscape")
 app = FastAPI(title="Soundscape", version="0.2.0")
@@ -59,6 +63,18 @@ def radio_for(sid: str) -> radio.Radio:
 @app.on_event("startup")
 async def _startup() -> None:
     con()
+    state["prune_task"] = asyncio.create_task(_prune_loop())
+
+
+async def _prune_loop() -> None:
+    while True:
+        try:
+            gone = library.prune(con(), config.LIBRARY_DIR)
+            if gone:
+                log.info("pruned %d unsaved songs", len(gone))
+        except Exception as e:
+            log.warning("prune: %s", e)
+        await asyncio.sleep(3600)
 
 
 @app.get("/healthz")
@@ -282,6 +298,13 @@ def patch_settings(sid: str, req: StationSettings) -> dict:
     return _station(sid)
 
 
+@app.get("/stations/{sid}/profile/effective")
+def effective_profile(sid: str) -> dict:
+    """The station profile as the agent sees it right now: seeds + steering from likes / less-like-this votes."""
+    _station(sid)
+    return store().station(sid)["profile"] or {}
+
+
 # ---- songs ------------------------------------------------------------------
 
 def _song(song_id: str) -> dict[str, Any]:
@@ -314,13 +337,154 @@ def song_audio(song_id: str):
 
 class SongFlags(BaseModel):
     saved: Optional[bool] = None
-    liked: Optional[bool] = None
+    liked: Optional[bool] = None       # like = vote +1 (and liked=1); liked=false clears the vote
+    vote: Optional[int] = None         # -1 "less like this" / 0 / +1
+    title: Optional[str] = None
 
 
 @app.patch("/songs/{song_id}")
 def patch_song(song_id: str, req: SongFlags) -> dict:
     _song(song_id)
-    for k, v in req.model_dump(exclude_none=True).items():
-        con().execute(f"UPDATE songs SET {k}=? WHERE id=?", (1 if v else 0, song_id))
+    if req.saved is not None:
+        con().execute("UPDATE songs SET saved=? WHERE id=?", (1 if req.saved else 0, song_id))
+    if req.liked is not None:
+        con().execute("UPDATE songs SET liked=?, vote=? WHERE id=?", (1 if req.liked else 0, 1 if req.liked else 0, song_id))
+    if req.vote is not None:
+        v = max(-1, min(1, int(req.vote)))
+        con().execute("UPDATE songs SET vote=?, liked=? WHERE id=?", (v, 1 if v > 0 else 0, song_id))
+    if req.title is not None:
+        con().execute("UPDATE songs SET title=? WHERE id=?", (" ".join(req.title.split())[:120], song_id))
     con().commit()
     return _song(song_id)
+
+
+@app.delete("/songs/{song_id}")
+def delete_song(song_id: str) -> dict:
+    s = _song(song_id)
+    for p in (Path(s["path"]), Path(s["path"]).with_suffix(".json")):
+        p.unlink(missing_ok=True)
+    con().execute("DELETE FROM playlist_items WHERE song_id=?", (song_id,))
+    con().execute("DELETE FROM songs WHERE id=?", (song_id,))
+    con().commit()
+    return {"ok": True}
+
+
+# ---- library ----------------------------------------------------------------
+
+@app.get("/library")
+def library_songs(saved: Optional[bool] = None, liked: Optional[bool] = None, limit: int = 500) -> list[dict]:
+    """Across stations: saved and/or liked songs plus imports (never rejected renders)."""
+    where = ["status != 'rejected'"]
+    if saved:
+        where.append("saved=1")
+    if liked:
+        where.append("vote > 0")
+    if saved is None and liked is None:
+        where.append("(saved=1 OR vote > 0 OR station_id IS NULL)")
+    rows = con().execute(f"SELECT * FROM songs WHERE {' AND '.join(where)} ORDER BY created DESC LIMIT ?", (limit,))
+    return [store()._song(r) for r in rows]
+
+
+@app.post("/library/import")
+async def library_import(file: UploadFile = File(...), title: Optional[str] = Form(default=None)) -> dict:
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "empty file")
+    tmp = config.LIBRARY_DIR / "songs" / f"import-{uuid.uuid4().hex[:8]}{Path(file.filename or '').suffix or '.bin'}"
+    tmp.parent.mkdir(parents=True, exist_ok=True)
+    tmp.write_bytes(data)
+    seconds = ingest.probe_seconds(tmp)
+    tmp.unlink(missing_ok=True)
+    sid = library.import_song(con(), config.LIBRARY_DIR, data=data, filename=file.filename or "import.bin", title=title, seconds=seconds)
+    return _song(sid)
+
+
+@app.post("/library/prune")
+def library_prune() -> dict:
+    return {"pruned": library.prune(con(), config.LIBRARY_DIR)}
+
+
+# ---- playlists --------------------------------------------------------------
+
+class PlaylistCreate(BaseModel):
+    name: str
+
+
+class PlaylistPatch(BaseModel):
+    name: Optional[str] = None
+    order: Optional[list[str]] = None
+
+
+class PlaylistAdd(BaseModel):
+    song_id: str
+    position: Optional[int] = None
+
+
+def _playlist(pid: str) -> dict[str, Any]:
+    r = con().execute("SELECT * FROM playlists WHERE id=?", (pid,)).fetchone()
+    if not r:
+        raise HTTPException(404, "playlist not found")
+    ids = library.playlist_items(con(), pid)
+    songs = {s["id"]: s for s in (store()._song(x) for x in con().execute(
+        f"SELECT * FROM songs WHERE id IN ({','.join('?' * len(ids))})", ids))} if ids else {}
+    items = [songs[i] for i in ids if i in songs]
+    return {"id": r["id"], "name": r["name"], "created": r["created"], "items": items,
+            "seconds": round(sum(float(s.get("seconds") or 0) for s in items), 1)}
+
+
+@app.post("/playlists")
+def playlists_create(req: PlaylistCreate) -> dict:
+    return _playlist(library.create_playlist(con(), req.name))
+
+
+@app.get("/playlists")
+def playlists_list() -> list[dict]:
+    return [_playlist(r["id"]) for r in con().execute("SELECT id FROM playlists ORDER BY created DESC")]
+
+
+@app.get("/playlists/{pid}")
+def playlists_get(pid: str) -> dict:
+    return _playlist(pid)
+
+
+@app.patch("/playlists/{pid}")
+def playlists_patch(pid: str, req: PlaylistPatch) -> dict:
+    _playlist(pid)
+    if req.name is not None:
+        con().execute("UPDATE playlists SET name=? WHERE id=?", (" ".join(req.name.split())[:80] or "Playlist", pid))
+        con().commit()
+    if req.order is not None:
+        library.set_items(con(), pid, req.order)
+    return _playlist(pid)
+
+
+@app.post("/playlists/{pid}/items")
+def playlists_add(pid: str, req: PlaylistAdd) -> dict:
+    _playlist(pid)
+    _song(req.song_id)
+    library.add_item(con(), pid, req.song_id, req.position)
+    return _playlist(pid)
+
+
+@app.delete("/playlists/{pid}/items/{song_id}")
+def playlists_remove(pid: str, song_id: str) -> dict:
+    _playlist(pid)
+    library.set_items(con(), pid, [s for s in library.playlist_items(con(), pid) if s != song_id])
+    return _playlist(pid)
+
+
+@app.delete("/playlists/{pid}")
+def playlists_delete(pid: str) -> dict:
+    _playlist(pid)
+    con().execute("DELETE FROM playlist_items WHERE playlist_id=?", (pid,))
+    con().execute("DELETE FROM playlists WHERE id=?", (pid,))
+    con().commit()
+    return {"ok": True}
+
+
+@app.get("/playlists/{pid}/export.zip")
+def playlists_export(pid: str):
+    pl = _playlist(pid)
+    data = library.export_zip(con(), pid, pl["name"], pl["items"])
+    return Response(content=data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{pl["name"].replace(chr(34), "")}.zip"'})

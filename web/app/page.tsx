@@ -23,6 +23,7 @@ export default function Home() {
       <header>
         <h1 className="text-5xl font-semibold tracking-tight">Soundscape</h1>
         <p className="text-zinc-400 mt-1">A radio that never runs out of songs.</p>
+        <nav className="text-sm text-zinc-400 mt-2 flex gap-4"><Link href="/library" className="hover:text-zinc-100">Library</Link><Link href="/playlists" className="hover:text-zinc-100">Playlists</Link></nav>
       </header>
       <section className="flex gap-2">
         <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && onCreate()} placeholder="New station name…"

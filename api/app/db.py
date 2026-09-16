@@ -8,7 +8,7 @@ CREATE TABLE IF NOT EXISTS seeds (id TEXT PRIMARY KEY, station_id TEXT NOT NULL 
   seconds REAL, analysis TEXT, created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS songs (id TEXT PRIMARY KEY, station_id TEXT REFERENCES stations(id), title TEXT, style TEXT, lyrics TEXT,
   abc TEXT, plan TEXT, seconds REAL, path TEXT NOT NULL, liked INTEGER DEFAULT 0, saved INTEGER DEFAULT 0, created REAL NOT NULL,
-  status TEXT DEFAULT 'ready', explain TEXT, gate TEXT, played REAL);
+  status TEXT DEFAULT 'ready', explain TEXT, gate TEXT, played REAL, tags TEXT, vote INTEGER DEFAULT 0);
 CREATE TABLE IF NOT EXISTS playlists (id TEXT PRIMARY KEY, name TEXT NOT NULL, created REAL NOT NULL);
 CREATE TABLE IF NOT EXISTS playlist_items (playlist_id TEXT NOT NULL REFERENCES playlists(id), song_id TEXT NOT NULL REFERENCES songs(id),
   position INTEGER NOT NULL, PRIMARY KEY (playlist_id, position));
@@ -32,6 +32,8 @@ MIGRATIONS = [
     ("songs", "explain", "TEXT"),
     ("songs", "gate", "TEXT"),
     ("songs", "played", "REAL"),
+    ("songs", "tags", "TEXT"),          # CLAP tags of the render (steering)
+    ("songs", "vote", "INTEGER DEFAULT 0"),   # +1 like, -1 less like this
 ]
 
 

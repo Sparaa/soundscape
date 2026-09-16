@@ -45,4 +45,6 @@ Already running `yue2-sidecar` / `sheetsage-sidecar` elsewhere (e.g. shared with
 Phase 3 — the radio plays (agent → LLM → YuE2 → gate → buffer, WebAudio crossfade player) and the visualizer runs on it:
 three.js scenes with raw GLSL (nebula, rings), a beat clock locked to the planned BPM and bass onsets, section cues from
 the planned score, palettes from the station's mood; every frame is published as the visual feed (`docs/visual-feed.md`)
-for a future native front end. Next: library + playlists + steering (Phase 4). See `docs/plan.md` §8.
+for a future native front end. Phase 4 — library (save, like / less-like-this steering, import your own files, 24 h
+pruning of unsaved radio songs), playlists (order, play-all with the visualizer, zip export with an .m3u). Next: release
+polish (Phase 5). See `docs/plan.md` §8.

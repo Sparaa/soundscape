@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
-from . import abc as abclib, agent, gate, llm as llmmod
+from . import abc as abclib, agent, gate, llm as llmmod, steer
 
 log = logging.getLogger("soundscape.radio")
 TARGET = {"stopped": 0, "warming": 2, "playing": 2, "stopping": 1}
@@ -138,9 +138,15 @@ class Store:
         self.con, self.library = con, library
 
     def station(self, sid: str) -> dict[str, Any]:
+        """The station with its profile STEERED by the votes on its songs (likes pull, dislikes push)."""
         r = dict(self.con.execute("SELECT * FROM stations WHERE id=?", (sid,)).fetchone())
         for k in ("profile", "settings"):
             r[k] = json.loads(r[k]) if r.get(k) else {}
+        liked, disliked = [], []
+        for row in self.con.execute("SELECT tags, vote FROM songs WHERE station_id=? AND vote != 0 AND tags IS NOT NULL ORDER BY created", (sid,)):
+            (liked if row["vote"] > 0 else disliked).append(json.loads(row["tags"]))
+        if r["profile"]:
+            r["profile"] = steer.steer(r["profile"], liked, disliked)
         return r
 
     def seeds(self, sid: str) -> list[dict[str, Any]]:
@@ -155,9 +161,9 @@ class Store:
 
     def _song(self, r) -> dict[str, Any]:
         d = dict(r)
-        for k in ("plan", "gate"):
+        for k in ("plan", "gate", "tags"):
             d[k] = json.loads(d[k]) if d.get(k) else None
-        d["liked"], d["saved"] = bool(d["liked"]), bool(d["saved"])
+        d["liked"], d["saved"], d["vote"] = bool(d.get("liked")), bool(d.get("saved")), int(d.get("vote") or 0)
         return d
 
     def ready(self, sid: str) -> list[dict[str, Any]]:
@@ -176,11 +182,11 @@ class Store:
             "SELECT * FROM songs WHERE station_id=? AND status IN ('played','rejected') ORDER BY created DESC LIMIT ?", (sid, n))]
 
     def add_song(self, sid: str, song: dict[str, Any], *, status: str) -> None:
-        self.con.execute("INSERT INTO songs (id, station_id, title, style, lyrics, abc, plan, seconds, path, created, status, explain, gate) "
-                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        self.con.execute("INSERT INTO songs (id, station_id, title, style, lyrics, abc, plan, seconds, path, created, status, explain, gate, tags) "
+                         "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                          (song["id"], sid, song.get("title"), song.get("style"), song.get("lyrics"), song.get("abc"),
                           json.dumps(song.get("plan")), song.get("seconds"), song["path"], time.time(), status, song.get("explain"),
-                          json.dumps(song.get("gate"))))
+                          json.dumps(song.get("gate")), json.dumps(song.get("tags")) if song.get("tags") else None))
         self.con.commit()
 
 
@@ -218,7 +224,7 @@ def make_renderer(*, llm: llmmod.LLM, yue2, analyze_tags: Optional[Callable[[byt
         verdict = gate.check(path, profile_tags=profile.get("tags"), render_tags=tags, seconds=job.get("audio_seconds"))
         out = {"id": song_id, "title": song.get("title") or plan.theme.title(), "style": request["style"], "lyrics": request["lyrics"],
                "abc": job.get("abc"), "plan": plan.to_dict(), "seconds": job.get("audio_seconds") or verdict["seconds"],
-               "path": str(path), "explain": plan.explain, "gate": verdict, "request": {k: v for k, v in request.items() if k not in ("abc", "hook_abc")},
+               "path": str(path), "explain": plan.explain, "gate": verdict, "tags": tags, "request": {k: v for k, v in request.items() if k not in ("abc", "hook_abc")},
                "yue2": {k: job.get(k) for k in ("planned_seconds", "timing", "truncated", "hook")}}
         (library / "songs" / f"{song_id}.json").write_text(json.dumps(out, indent=1))
         progress("done", 1.0)

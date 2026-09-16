@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { patchSettings, patchSong, planLabel, radioNext, radioPlay, radioStatus, radioStop, songAudioUrl, type RadioStatus, type Song, type Station } from "@/lib/api";
 import { mmss } from "@/lib/profile";
@@ -52,7 +53,7 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   };
   const onStop = async () => { player.current?.stop(); setStatus(await radioStop(sid)); };
   const onSkip = async () => { await getPlayer().skip(); };
-  const flag = async (s: Song, flags: { saved?: boolean; liked?: boolean }) => {
+  const flag = async (s: Song, flags: { saved?: boolean; liked?: boolean; vote?: -1 | 0 | 1 }) => {
     const u = await patchSong(s.id, flags);
     if (song?.id === s.id) setSong(u);
     void refresh();
@@ -85,7 +86,9 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
             <div className="text-xs text-zinc-500 font-mono">{mmss(pos.t)} / {mmss(pos.d)}</div>
             <div className="flex gap-2 text-xs">
               <button onClick={() => flag(song, { saved: !song.saved })} className={`px-2 py-1 rounded border ${song.saved ? "border-emerald-500 text-emerald-300" : "border-zinc-700"}`}>{song.saved ? "saved" : "save"}</button>
-              <button onClick={() => flag(song, { liked: !song.liked })} className={`px-2 py-1 rounded border ${song.liked ? "border-pink-500 text-pink-300" : "border-zinc-700"}`}>{song.liked ? "♥ liked" : "♡ like"}</button>
+              <button onClick={() => flag(song, { vote: song.vote > 0 ? 0 : 1 })} className={`px-2 py-1 rounded border ${song.vote > 0 ? "border-pink-500 text-pink-300" : "border-zinc-700"}`} title="more like this — steers the station">{song.vote > 0 ? "♥ more like this" : "♡ more like this"}</button>
+              <button onClick={() => flag(song, { vote: song.vote < 0 ? 0 : -1 })} className={`px-2 py-1 rounded border ${song.vote < 0 ? "border-amber-500 text-amber-300" : "border-zinc-700"}`} title="less like this — steers the station away">{song.vote < 0 ? "👎 less like this" : "👎 less"}</button>
+              <Link href="/library" className="px-2 py-1 text-zinc-500 hover:text-zinc-200">library →</Link>
             </div>
             {song.lyrics && <pre className="text-xs text-zinc-400 whitespace-pre-wrap font-sans mt-2 max-h-48 overflow-auto">{song.lyrics}</pre>}
           </div>
