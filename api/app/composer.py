@@ -25,6 +25,7 @@ class Yue2:
         client = self._c()
         try:
             body = {k: v for k, v in request.items() if k not in ("cover_mode", "vocal_promoted")}
+            body.setdefault("priority", "background")   # a radio filling its buffer never delays someone's click on a shared sidecar
             r = await client.post(f"{self.base_url}/generate", json=body)
             if r.status_code != 200:
                 raise MusicError(f"yue2 {r.status_code}: {r.text[:300]}")

@@ -1,50 +1,76 @@
 # Soundscape
 
-A radio that never runs out of songs. Seed a **station** with your own music (a file, or a link yt-dlp can fetch);
-the **music agent** learns the seeds' sound and keeps composing new songs in that style — new pieces, reinterpretations,
-hooks, and the occasional cover — cueing them up so playback is continuous until you press **Stop**. A **visualizer**
-locked to the beat fills the screen. Anything you like is saved to disk and can be arranged into playlists.
+**A radio that never runs out of songs.** Seed a station with your own music — a file, or a link `yt-dlp` can fetch —
+and a music agent learns the seeds' sound and keeps composing: new songs in that style, reinterpretations, hooks with
+new verses, the occasional straight cover with new words. Two songs stay cued while you listen; one spare survives
+Stop so Play is instant. A beat-locked visualizer fills the screen. Save what you like, build playlists, export them.
 
-**Self-hosted, personal use.** Soundscape is not a service and is not designed to be hosted for others. You run it on
-your own GPU machine. The default models it drives — [YuE2](https://huggingface.co/m-a-p/YuE2-3B) (composer),
-[SheetSage2](https://huggingface.co/m-a-p/SheetSage2) + [MERT](https://huggingface.co/m-a-p/MERT-v2-FullSong)
-(transcription) — are released under **CC BY-NC 4.0** (non-commercial); [CLAP](https://huggingface.co/laion/larger_clap_music_and_speech)
-is Apache-2.0. Soundscape's own code is **Apache-2.0**. Links are fetched with yt-dlp only for your own analysis; nothing is
-redistributed.
+Self-hosted, single-user, personal use. Not a service.
 
-## How it works
+## What it does
 
-```
-web  (Next.js, WebAudio + three.js)   player · visualizer · station · library
-api  (FastAPI, SQLite, disk library)  ingest → analyze → station profile → agent → gate → queue
-sidecars (GPU, own repos)             yue2-sidecar :3015 · sheetsage-sidecar :3016 · clipgrab-sidecar :3014
-LLM                                   any OpenAI-compatible endpoint (lyrics + planning)
-```
-
-See `docs/plan.md` for the design, phases and decisions.
+- **Stations & seeds** — upload a song or paste a link. SheetSage2 transcribes the melody and chords into a score, CLAP
+  describes the sound (genre, mood, instruments, vocals, production). One or more seeds become a *station profile*:
+  weighted tags, a tempo band, keys, the song form, and how many syllables each line carries.
+- **The agent** — every track gets a plan: *inspired* (new melody in the station's sound, 50 %), *faithful cover*
+  (new lyrics on a seed's exact melody and chords, 20 %), *reinterpret* (a seed's melody in the station's sound, 15 %),
+  *hook* (a seed's chorus with new verses, 15 %); a covers ↔ new slider moves the weights, and creativity rules stop
+  the same seed being covered twice in a row or more than once an hour. The LLM writes a title, style line and lyrics
+  fitted to the melody's phrasing; YuE2 renders; a gate rejects tracks that are too short, too quiet or don't sound like
+  the station (CLAP similarity), and the agent tries again.
+- **Radio** — press Play. The buffer keeps two songs ready and one spare after Stop. Skip, save, ♥ more like this,
+  👎 less like this (votes steer the station's profile).
+- **Visualizer** — three.js scenes driven by the player's analyser: a beat clock locked to the planned BPM and nudged
+  by bass onsets, section changes from the planned score, palettes from the station's mood. Every frame is also
+  published as a small JSON feed (`docs/visual-feed.md`) so a native front end can render the same data.
+- **Library & playlists** — saved and liked songs persist on disk (FLAC + a JSON with style, lyrics, score and plan);
+  unsaved radio songs are pruned after 24 h; import your own files; playlists with ordering, play-all through the same
+  player and visualizer, and a zip export with an `.m3u`.
 
 ## Requirements
 
-- Linux, Docker with the NVIDIA container runtime, one GPU with ≥ 16 GB VRAM (YuE2 peaks at 11-14 GB; SheetSage2/CLAP
-  load in turn and unload when idle).
-- An OpenAI-compatible LLM endpoint (a local server such as SGLang / vLLM / llama.cpp, or a hosted one) for the writer.
-- The three sidecar images: `yue2-sidecar`, `sheetsage-sidecar`, `clipgrab-sidecar` (build from their repos).
+- Linux, Docker with the NVIDIA container runtime, a GPU with **≥ 16 GB VRAM** (YuE2 peaks at 11-14 GB; SheetSage2 and
+  CLAP load in turn and unload when idle). A 4090 renders a 3-minute song in roughly 70-100 s.
+- An **OpenAI-compatible LLM** endpoint for the writer (local SGLang / vLLM / llama.cpp, or hosted). Small models do fine.
+- The three sidecar images, built from their repos (they are shared with other apps):
+  [`yue2-sidecar`](../yue2-sidecar) · [`sheetsage-sidecar`](../sheetsage-sidecar) · [`clipgrab-sidecar`](../clipgrab-sidecar)
 
 ## Run
 
 ```bash
+git clone … soundscape && cd soundscape
 cp .env.example .env                       # GPU uuid, LLM endpoint, library path
-docker compose --profile gpu up -d         # everything, GPU sidecars included
+docker build -t yue2-sidecar ../yue2-sidecar && docker build -t sheetsage-sidecar ../sheetsage-sidecar && docker build -t clipgrab-sidecar ../clipgrab-sidecar
+docker compose --profile gpu up -d         # web :3020, api :3021, sidecars
 open http://localhost:3020
 ```
-Already running `yue2-sidecar` / `sheetsage-sidecar` elsewhere (e.g. shared with another app)? Set `YUE2_URL` /
-`SHEETSAGE_URL` in `.env` and start without the profile: `docker compose up -d`.
+First run: the sidecars download their weights (~12 GB) into named volumes. Already running the sidecars elsewhere?
+Set `YUE2_URL` / `SHEETSAGE_URL` in `.env` and start without the profile (`docker compose up -d`).
 
-## Status
+`make test` runs the API (pytest) and web (vitest + tsc) suites in throwaway containers; `scripts/e2e.sh <song.mp3>`
+seeds a station from a file and plays until two songs are cued.
 
-Phase 3 — the radio plays (agent → LLM → YuE2 → gate → buffer, WebAudio crossfade player) and the visualizer runs on it:
-three.js scenes with raw GLSL (nebula, rings), a beat clock locked to the planned BPM and bass onsets, section cues from
-the planned score, palettes from the station's mood; every frame is published as the visual feed (`docs/visual-feed.md`)
-for a future native front end. Phase 4 — library (save, like / less-like-this steering, import your own files, 24 h
-pruning of unsaved radio songs), playlists (order, play-all with the visualizer, zip export with an .m3u). Next: release
-polish (Phase 5). See `docs/plan.md` §8.
+## How the pieces fit
+
+```
+web  Next.js 15 · WebAudio (two decks, crossfade) · three.js scenes · visual feed
+api  FastAPI · SQLite · library on disk     ingest → analyze → profile → agent → write → render → gate → cue
+     clipgrab :3014   sheetsage :3016 (SheetSage2 + CLAP)   yue2 :3015 (YuE2-3B)   LLM (OpenAI-compatible)
+```
+Design, decisions and phases: `docs/plan.md`. Feed contract: `docs/visual-feed.md`.
+
+## Licenses
+
+Soundscape's code is **Apache-2.0** (see `LICENSE`). The default models it drives are not: **YuE2-3B**, **SheetSage2** and
+**MERT-v2-FullSong** are **CC BY-NC 4.0** (non-commercial); **CLAP** (`laion/larger_clap_music_and_speech`) is Apache-2.0.
+You download those weights yourself, for personal use, under their terms. Links are fetched with yt-dlp only for your
+own analysis; nothing is redistributed. The sidecar interfaces are model-agnostic — swap in a differently licensed
+composer if you need one.
+
+## Troubleshooting
+
+- *api offline / sidecar offline* on the home page → `curl localhost:3021/healthz` names the unreachable sidecar; the
+  LLM must be reachable from inside Docker (bind it on `0.0.0.0` or the docker0 address, not only `127.0.0.1`).
+- *First song takes minutes* → the first render loads YuE2 (~1 min) and the gate may reject an attempt; the buffer
+  fills during the first song.
+- *Everything sounds the same* → add more seeds, move the covers ↔ new slider, vote 👎 on the direction you dislike.
