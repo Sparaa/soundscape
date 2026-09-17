@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 import logging
 import random
 import time
@@ -135,7 +136,12 @@ class Store:
     """The songs/plans view the radio needs, over the SQLite connection."""
 
     def __init__(self, con, library: Path):
-        self.con, self.library = con, library
+        """con = a connection (tests) or a zero-argument getter returning THIS THREAD's connection (the app)."""
+        self._con, self.library = con, library
+
+    @property
+    def con(self):
+        return self._con if isinstance(self._con, sqlite3.Connection) else self._con()   # NB: Connection objects are callable
 
     def station(self, sid: str) -> dict[str, Any]:
         """The station with its profile STEERED by the votes on its songs (likes pull, dislikes push)."""
@@ -249,10 +255,10 @@ def make_renderer(*, llm: llmmod.LLM, yue2, analyze_tags: Optional[Callable[[byt
         song_id = uuid.uuid4().hex[:12]
         path = library / "songs" / f"{song_id}.flac"
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(audio)
+        await asyncio.to_thread(path.write_bytes, audio)            # 40 MB write + ffmpeg below: keep the event loop free
         progress("checking", 0.92)
         tags = await analyze_tags(audio) if analyze_tags else None
-        verdict = gate.check(path, profile_tags=profile.get("tags"), render_tags=tags, seconds=job.get("audio_seconds"))
+        verdict = await asyncio.to_thread(gate.check, path, profile_tags=profile.get("tags"), render_tags=tags, seconds=job.get("audio_seconds"))
         out = {"id": song_id, "title": song.get("title") or plan.theme.title(), "style": request["style"], "lyrics": request["lyrics"],
                "abc": job.get("abc"), "plan": plan.to_dict(), "seconds": job.get("audio_seconds") or verdict["seconds"],
                "path": str(path), "explain": plan.explain, "gate": verdict, "tags": tags, "request": {k: v for k, v in request.items() if k not in ("abc", "hook_abc")},

@@ -9,12 +9,13 @@ from typing import Any, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 import logging
 
 import asyncio
+import threading
 
 from fastapi.responses import Response
 
@@ -22,19 +23,43 @@ from . import abc as abclib, analyze, composer, config, db, ingest, library, llm
 
 log = logging.getLogger("soundscape")
 app = FastAPI(title="Soundscape", version="0.2.0")
+
+
+@app.middleware("http")
+async def _errors_as_json(request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as e:  # registered BEFORE CORS so CORS wraps it: the browser sees a readable 500, not a NetworkError
+        log.exception("unhandled error on %s %s", request.method, request.url.path)
+        return JSONResponse({"detail": f"internal error: {type(e).__name__}: {str(e)[:200]}"}, status_code=500)
+
+
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 state: dict[str, Any] = {}
 
 
+_local = threading.local()
+
+
 def con():
-    if "db" not in state:
-        state["db"] = db.connect(config.LIBRARY_DIR)
-    return state["db"]
+    """This thread's SQLite connection to the current library (request threads, the event loop and to_thread workers
+    each get their own; WAL keeps them from blocking one another)."""
+    path = str(config.LIBRARY_DIR)
+    if getattr(_local, "path", None) != path or getattr(_local, "con", None) is None:
+        _local.con, _local.path = db.connect(config.LIBRARY_DIR), path
+    return _local.con
+
+
+def reset_db() -> None:
+    """Tests switch LIBRARY_DIR: drop this thread's connection and the cached store/radios."""
+    _local.con = None
+    for k in ("store", "radios", "renderer"):
+        state.pop(k, None)
 
 
 def store() -> radio.Store:
     if "store" not in state:
-        state["store"] = radio.Store(con(), config.LIBRARY_DIR)
+        state["store"] = radio.Store(con, config.LIBRARY_DIR)      # the getter, not a connection: per-thread
     return state["store"]
 
 

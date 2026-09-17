@@ -100,3 +100,15 @@ def test_radio_routes_with_a_fake_renderer(monkeypatch):
         assert c.get(f"/songs/{song_id}/audio").status_code == 404        # fake path
         assert c.patch(f"/stations/{sid}/settings", json={"covers": 0.5}).json()["settings"]["covers"] == 0.5
         assert c.post(f"/stations/{sid}/stop").json()["state"] in ("stopping", "stopped")
+
+
+def test_concurrent_reads_never_lose_a_station():
+    """Regression 2026-09-17: one shared SQLite connection across worker threads returned "station not found" / 500
+    for stations that exist once the UI's polling overlapped (the browser showed the bare 500s as NetworkError)."""
+    import concurrent.futures as cf
+    with TestClient(main.app) as c:
+        sid = c.post("/stations", json={"name": "Busy"}).json()["id"]
+        paths = [f"/stations/{sid}/radio", f"/stations/{sid}", "/stations", f"/stations/{sid}/songs", "/playlists", "/library"]
+        with cf.ThreadPoolExecutor(24) as ex:
+            codes = list(ex.map(lambda i: c.get(paths[i % len(paths)]).status_code, range(360)))
+        assert set(codes) == {200}, {k: codes.count(k) for k in set(codes)}

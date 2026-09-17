@@ -19,8 +19,12 @@ def connect(library_dir: Path) -> sqlite3.Connection:
     library_dir.mkdir(parents=True, exist_ok=True)
     (library_dir / "songs").mkdir(exist_ok=True)
     (library_dir / "seeds").mkdir(exist_ok=True)
-    con = sqlite3.connect(library_dir / "soundscape.db", check_same_thread=False)
+    # One connection PER THREAD (see main.con): a single connection shared by FastAPI's worker threads and the radio
+    # loop returned empty results under load ("station not found" for stations that exist) and sporadic 500s.
+    con = sqlite3.connect(library_dir / "soundscape.db", timeout=10.0)
     con.row_factory = sqlite3.Row
+    con.execute("PRAGMA journal_mode=WAL")       # readers never block the writer and vice versa
+    con.execute("PRAGMA busy_timeout=10000")
     con.executescript(SCHEMA)
     migrate(con)
     return con

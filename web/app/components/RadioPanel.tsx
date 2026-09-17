@@ -11,13 +11,23 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   const [song, setSong] = useState<Song | null>(null);
   const [pos, setPos] = useState({ t: 0, d: 0 });
   const [err, setErr] = useState<string | null>(null);
-  const [paused, setPaused] = useState(false);
+  const [paused, setPausedState] = useState(false);
+  const setPaused = (v: boolean) => { pausedRef.current = v; setPausedState(v); };
   const [playerObj, setPlayerObj] = useState<RadioPlayer | null>(null);
   const [scene, setScene] = useState<string>(() => { try { return localStorage.getItem("soundscape.scene") ?? "radial"; } catch { return "radial"; } });
   const player = useRef<RadioPlayer | null>(null);
   const sid = station.id;
 
-  const refresh = useCallback(() => radioStatus(sid).then(setStatus).catch((e) => setErr(String(e))), [sid]);
+  const pausedRef = useRef(false);
+  const refresh = useCallback(async () => {
+    try {
+      const st = await radioStatus(sid);
+      setStatus(st);
+      setErr(null);                                   // a transient failure (API restart, blip) clears itself
+      // the API forgot we were playing (it restarted): tell it again so the buffer keeps filling
+      if (st.state === "stopped" && player.current && player.current.current.song && !pausedRef.current) setStatus(await radioPlay(sid));
+    } catch (e) { setErr(`connection to the API lost — retrying (${String(e).slice(0, 80)})`); }
+  }, [sid]);
   useEffect(() => { void refresh(); const id = window.setInterval(refresh, 2000); return () => window.clearInterval(id); }, [refresh]);
   useEffect(() => { const id = window.setInterval(() => player.current && setPos(player.current.position()), 500); return () => window.clearInterval(id); }, []);
   useEffect(() => () => player.current?.stop(), []);

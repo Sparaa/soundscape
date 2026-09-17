@@ -30,7 +30,7 @@ def _song_row(c, sid, title, created=None, status="played"):
 def test_playlists_votes_import_prune_export(tmp_path, monkeypatch):
     monkeypatch.setattr(main.config, "LIBRARY_DIR", tmp_path)
     monkeypatch.setattr(main.ingest, "probe_seconds", lambda p: 12.5)
-    main.state.pop("db", None); main.state.pop("store", None)
+    main.reset_db()
     with TestClient(main.app) as c:
         # two real files so export can zip them
         for sid in ("a1", "b2"):
