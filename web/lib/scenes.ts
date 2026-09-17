@@ -190,3 +190,99 @@ export function radial(bins = 36): Scene {
   };
 }
 SCENES.radial = radial;
+
+
+/** Pulse: the radial analyzer in GPU Pulse's red-phosphor CRT language. One hue. Each ray is a column of SEGMENTS like
+ * a ▰▰▰▱▱ meter — lit segments bright red, unlit ones a dim ember, a hot segment riding the held peak — with an additive
+ * glow pass behind the lit segments. Dark disc with range rings and a crosshair, the wheel in red. Scanlines, vignette
+ * and the telemetry HUD are drawn by the Visualizer over the canvas. */
+export function pulse(bins = 36, segments = 14): Scene {
+  const N = bins * 2, TOTAL = N * segments;
+  const group = new THREE.Group();
+  const R_RING = 1.0, R_RAY = 1.18, SEG_LEN = 0.115, SEG_GAP = 0.03;
+  const dummy = new THREE.Object3D(), color = new THREE.Color();
+  const HOT = new THREE.Color(0xff2a3c), LIT = new THREE.Color(0xe01428), DIM = new THREE.Color(0x3a0a10), PEAK = new THREE.Color(0xffb0b8);
+  const spacing = (2 * Math.PI * R_RAY) / N;
+  const segGeo = new THREE.PlaneGeometry(spacing * 0.7, SEG_LEN); segGeo.translate(0, SEG_LEN / 2, 0);
+  const glowGeo = new THREE.PlaneGeometry(spacing * 1.5, SEG_LEN * 1.9); glowGeo.translate(0, SEG_LEN / 2, 0);
+  const flat = (extra: THREE.MeshBasicMaterialParameters = {}) => new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false, ...extra });
+  const glow = new THREE.InstancedMesh(glowGeo, flat({ transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending }), TOTAL);
+  const segs = new THREE.InstancedMesh(segGeo, flat(), TOTAL);
+  [glow, segs].forEach((m, i) => { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.renderOrder = i; m.frustumCulled = false; group.add(m); });
+  // static transforms: segment (k, j) sits at radius R_RAY + j * (SEG_LEN + SEG_GAP) along bar k's direction
+  const angleOf = (i: number, side: number) => -Math.PI / 2 + side * ((i + 0.5) / bins) * Math.PI;
+  for (let k = 0; k < N; k++) {
+    const i = k % bins, side = k < bins ? 1 : -1, a = angleOf(i, side), cx = Math.cos(a), cy = Math.sin(a);
+    for (let j = 0; j < segments; j++) {
+      const r = R_RAY + j * (SEG_LEN + SEG_GAP);
+      dummy.position.set(cx * r, cy * r, 0); dummy.rotation.set(0, 0, a - Math.PI / 2); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
+      segs.setMatrixAt(k * segments + j, dummy.matrix); glow.setMatrixAt(k * segments + j, dummy.matrix);
+    }
+  }
+  // ring ticks, disc, range rings, crosshair, wheel
+  const tickGeo = new THREE.PlaneGeometry(((2 * Math.PI * R_RING) / N) * 0.55, 0.06); tickGeo.translate(0, 0.03, 0);
+  const ticks = new THREE.InstancedMesh(tickGeo, flat(), N); ticks.renderOrder = 2; ticks.frustumCulled = false; group.add(ticks);
+  for (let k = 0; k < N; k++) { const a = angleOf(k % bins, k < bins ? 1 : -1); dummy.position.set(Math.cos(a) * (R_RING + 0.02), Math.sin(a) * (R_RING + 0.02), 0); dummy.rotation.set(0, 0, a - Math.PI / 2); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); ticks.setMatrixAt(k, dummy.matrix); }
+  const discMat = flat({ color: 0x0d0203 });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(R_RING - 0.05, 128), discMat); disc.renderOrder = 3; group.add(disc);
+  const lineMat = flat({ color: 0x5a0d14 });
+  const statics: THREE.BufferGeometry[] = [];
+  for (let g = 0; g < 5; g++) { const r = 0.2 + g * 0.17, geo = new THREE.RingGeometry(r, r + 0.005, 128); statics.push(geo); const m = new THREE.Mesh(geo, lineMat); m.renderOrder = 4; group.add(m); }
+  for (const rot of [0, Math.PI / 2]) { const geo = new THREE.PlaneGeometry((R_RING - 0.05) * 2, 0.004); statics.push(geo); const m = new THREE.Mesh(geo, lineMat); m.rotation.z = rot; m.renderOrder = 4; group.add(m); }
+  const wheel = new THREE.Group();
+  const wheelMat = flat({ color: 0xe01428, side: THREE.DoubleSide });
+  const wheelGlow = flat({ color: 0xff2a3c, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const R_WHEEL = 0.62, T = 0.04;
+  const ribbon = (pts: THREE.Vector2[], width: number) => {
+    const pos: number[] = [], idx: number[] = [];
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)], nx = -(b.y - a.y), ny = b.x - a.x, len = Math.hypot(nx, ny) || 1;
+      pos.push(pts[k].x + (nx / len) * width / 2, pts[k].y + (ny / len) * width / 2, 0, pts[k].x - (nx / len) * width / 2, pts[k].y - (ny / len) * width / 2, 0);
+      if (k < pts.length - 1) idx.push(2 * k, 2 * k + 1, 2 * k + 2, 2 * k + 1, 2 * k + 3, 2 * k + 2);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;
+  };
+  for (const [mat, grow, order] of [[wheelGlow, 2.4, 5], [wheelMat, 1, 6]] as [THREE.Material, number, number][]) {
+    const rimGeo = new THREE.RingGeometry(R_WHEEL - T * grow, R_WHEEL + T * (grow - 1), 128); statics.push(rimGeo);
+    const rim = new THREE.Mesh(rimGeo, mat); rim.renderOrder = order; wheel.add(rim);
+    for (let i = 0; i < 3; i++) {
+      const a0 = (i / 3) * Math.PI * 2 + Math.PI / 2, pts: THREE.Vector2[] = [];
+      for (let k = 0; k <= 32; k++) { const t = k / 32, r = (R_WHEEL - T / 2) * (1 - t), ang = a0 + t * 1.0; pts.push(new THREE.Vector2(r * Math.cos(ang), r * Math.sin(ang))); }
+      const g = ribbon(pts, T * 0.9 * grow); statics.push(g); const m = new THREE.Mesh(g, mat); m.renderOrder = order; wheel.add(m);
+    }
+  }
+  group.add(wheel);
+  const level = new Float32Array(bins), peak = new Float32Array(bins);
+  let t = 0;
+  return {
+    name: "pulse", object: group,
+    update(f, dt) {
+      t += dt;
+      const spec = f.spectrum ?? new Array(bins).fill(f.bands.rms);
+      for (let i = 0; i < bins; i++) {
+        const v = Math.pow(spec[Math.min(spec.length - 1, Math.floor((i / bins) * spec.length))] ?? 0, 1.1);
+        level[i] = v > level[i] ? level[i] + (v - level[i]) * 0.6 : level[i] + (v - level[i]) * 0.12;
+        peak[i] = Math.max(level[i], peak[i] - dt * 0.28);
+      }
+      const flicker = 0.94 + 0.06 * Math.sin(t * 47.0) * Math.sin(t * 13.0);          // faint CRT instability
+      for (let k = 0; k < N; k++) {
+        const i = k % bins, lit = Math.round(level[i] * segments * (1 + 0.1 * f.beat.hit)), pk = Math.min(segments - 1, Math.round(peak[i] * segments));
+        for (let j = 0; j < segments; j++) {
+          const idx = k * segments + j, on = j < lit;
+          if (j === pk && pk >= lit && pk > 0) color.copy(PEAK).multiplyScalar(0.8 * flicker);
+          else if (on) color.copy(j >= lit - 1 ? HOT : LIT).multiplyScalar(flicker * (0.75 + 0.25 * (j / segments)));
+          else color.copy(DIM);
+          segs.setColorAt(idx, color);
+          glow.setColorAt(idx, on ? color : color.setRGB(0, 0, 0));
+        }
+        ticks.setColorAt(k, color.copy(level[i] > 0.05 ? LIT : DIM).multiplyScalar(0.6 + 0.4 * f.beat.hit));
+      }
+      for (const m of [segs, glow, ticks]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      wheel.rotation.z = -t * 0.35 - f.beat.hit * 0.04; wheel.scale.setScalar(1 + 0.03 * f.beat.hit);
+      wheelGlow.opacity = 0.12 + 0.25 * f.bands.bass + 0.2 * f.beat.hit;
+      discMat.color.setRGB(0.05 + 0.05 * f.bands.bass, 0.008, 0.012);
+    },
+    dispose() { for (const g of [segGeo, glowGeo, tickGeo, ...statics]) g.dispose(); for (const m of [segs.material, glow.material, ticks.material, discMat, lineMat, wheelMat, wheelGlow]) (m as THREE.Material).dispose(); },
+  };
+}
+SCENES.pulse = pulse;

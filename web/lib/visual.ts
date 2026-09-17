@@ -105,3 +105,9 @@ export function frame(t: number, bands: Bands, clock: BeatClock, cues: SectionCu
   return { v: 1, t, bands, beat: { phase: clock.phase(t), index: clock.beatIndex(t), bar: clock.bar(t), bpm: clock.bpm, hit: clock.hit }, section, palette, song,
            ...(spectrum ? { spectrum } : {}) };
 }
+
+/** GPU-Pulse style text meter: meter(0.62, 10) → "▰▰▰▰▰▰▱▱▱▱". */
+export function meter(v: number, n = 12): string {
+  const k = Math.max(0, Math.min(n, Math.round((isFinite(v) ? v : 0) * n)));
+  return "▰".repeat(k) + "▱".repeat(n - k);
+}

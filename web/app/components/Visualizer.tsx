@@ -5,7 +5,7 @@ import * as THREE from "three";
 import type { Song } from "@/lib/api";
 import { sectionCues, type SectionCue } from "@/lib/abc";
 import { SCENES, type Scene } from "@/lib/scenes";
-import { BeatClock, bandEnergies, frame, logSpectrum, paletteFor, type Palette, type VisualFrame } from "@/lib/visual";
+import { BeatClock, bandEnergies, frame, logSpectrum, meter, paletteFor, type Palette, type VisualFrame } from "@/lib/visual";
 import type { RadioPlayer } from "@/lib/player";
 
 export const FEED_CHANNEL = "soundscape-visual-feed";
@@ -19,6 +19,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
   const host = useRef<HTMLDivElement | null>(null);
   const [fps, setFps] = useState(0);
   const [rms, setRms] = useState(0);
+  const [hud, setHud] = useState<VisualFrame | null>(null);
   const songRef = useRef<Song | null>(song); songRef.current = song;
   const tagsRef = useRef(tags); tagsRef.current = tags;
 
@@ -38,7 +39,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
     const fft = new Uint8Array(analyser.frequencyBinCount);
     const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(FEED_CHANNEL) : null;
     let clock = new BeatClock(120, 0), cues: SectionCue[] = [], palette: Palette = paletteFor(null), cueSong: string | null = null;
-    let last = performance.now(), frames = 0, fpsT = last, raf = 0, quality = 1;
+    let last = performance.now(), frames = 0, fpsT = last, raf = 0, quality = 1, hudT = 0;
     const resize = () => { const w = el.clientWidth, h = el.clientHeight; renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); };
     resize();
     const ro = new ResizeObserver(resize); ro.observe(el);
@@ -63,6 +64,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
       renderer.render(scene3, cam);
       (window as unknown as { soundscapeFeed?: VisualFrame }).soundscapeFeed = f;
       channel?.postMessage(f);
+      if (now - hudT > 100) { hudT = now; setHud(f); }               // HUD text at 10 Hz
       frames++;
       if (now - fpsT > 1000) {                         // adaptive quality: drop pixel ratio when below 45 fps
         const cur = frames * 1000 / (now - fpsT); setFps(Math.round(cur)); setRms(bands.rms); frames = 0; fpsT = now;
@@ -85,8 +87,27 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
         <button onClick={fullscreen} className="px-2 py-0.5 rounded border border-zinc-800">⛶</button>
         <span className="px-1 font-mono" title="fps · analyser signal level (0.00 while a song plays = no audio reaching the analyser)">{fps} fps · {rms.toFixed(2)}</span>
       </div>
-      {label && <div className="absolute top-4 left-5 text-zinc-500 text-xs tracking-[0.3em] uppercase pointer-events-none">{label}</div>}
-      {song && <div className="absolute bottom-4 left-5 text-zinc-300 text-base pointer-events-none">{song.title}</div>}
+      {sceneName === "pulse" ? (
+        <>
+          <div className="crt-scanlines" /><div className="crt-vignette" />
+          <div className="absolute top-4 left-5 font-mono text-[11px] leading-5 pointer-events-none" style={{ color: "#ff2a3c", textShadow: "0 0 6px rgba(255,42,60,.7)" }}>
+            <div style={{ color: "#a0141f" }}>SOUNDSCAPE LINK PROTOCOL // SPECTRAL TELEMETRY</div>
+            <div className="font-bold tracking-wider">[ {(label ?? "SOUNDSCAPE").replace(/^Soundscape · /i, "STATION :: ").toUpperCase()} ]</div>
+          </div>
+          <div className="absolute bottom-4 left-5 font-mono text-[11px] leading-5 pointer-events-none" style={{ color: "#ff2a3c", textShadow: "0 0 6px rgba(255,42,60,.7)" }}>
+            <div className="font-bold">── NOW PLAYING ── {(song?.title ?? "STANDBY").toUpperCase()}</div>
+            <div>BASS {meter(hud?.bands.bass ?? 0, 18)} {String(Math.round((hud?.bands.bass ?? 0) * 100)).padStart(3)}%</div>
+            <div>MID  {meter((hud?.bands.mid ?? 0) * 1.6, 18)} {String(Math.round((hud?.bands.mid ?? 0) * 100)).padStart(3)}%</div>
+            <div>TREB {meter((hud?.bands.treble ?? 0) * 3, 18)} {String(Math.round((hud?.bands.treble ?? 0) * 100)).padStart(3)}%</div>
+            <div style={{ color: "#a0141f" }}>BPM {hud?.beat.bpm ?? "---"} · BAR {hud?.beat.bar ?? 0} · BEAT {meter(1 - (hud?.beat.phase ?? 0), 4)} · SECTION :: {(hud?.section?.label ?? "—").toUpperCase()}{song?.plan ? ` · MODE :: ${song.plan.mode.toUpperCase()}` : ""}</div>
+          </div>
+        </>
+      ) : (
+        <>
+          {label && <div className="absolute top-4 left-5 text-zinc-500 text-xs tracking-[0.3em] uppercase pointer-events-none">{label}</div>}
+          {song && <div className="absolute bottom-4 left-5 text-zinc-300 text-base pointer-events-none">{song.title}</div>}
+        </>
+      )}
       {!player && <div className="absolute inset-0 flex items-center justify-center text-zinc-600 text-sm">press Play</div>}
     </div>
   );

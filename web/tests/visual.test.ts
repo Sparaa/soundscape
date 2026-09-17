@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { sectionAt, sectionCues } from "@/lib/abc";
-import { BeatClock, bandEnergies, frame, logSpectrum, paletteFor } from "@/lib/visual";
+import { BeatClock, bandEnergies, frame, logSpectrum, meter, paletteFor } from "@/lib/visual";
 
 const SCORE = ["X:1", "M:4/4", "L:1/16", "Q:1/4=120", "V: Vocal", "V: Ins", "K:C",
   "% intro", "V: Vocal", "Z|Z|", "V: Ins", "C4E4G4c4|C4E4G4c4|",
@@ -69,5 +69,14 @@ describe("logSpectrum", () => {
     const f = frame(1, { bass: 1, mid: 0, treble: 0, rms: 0.5 }, c, [], paletteFor(null), null, 10, s);
     expect(f.spectrum).toHaveLength(16);
     expect(frame(1, f.bands, c, [], f.palette, null, 10).spectrum).toBeUndefined();
+  });
+});
+
+describe("meter", () => {
+  it("draws GPU-Pulse style bars and clamps", () => {
+    expect(meter(0.5, 10)).toBe("▰▰▰▰▰▱▱▱▱▱");
+    expect(meter(2, 4)).toBe("▰▰▰▰");
+    expect(meter(-1, 4)).toBe("▱▱▱▱");
+    expect(meter(NaN, 3)).toBe("▱▱▱");
   });
 });

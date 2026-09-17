@@ -20,5 +20,6 @@ interface VisualFrame {
 Sources: `web/lib/visual.ts` (bands, `BeatClock`, `paletteFor`, `frame`), `web/lib/abc.ts` (`sectionCues`). Scenes in
 `web/lib/scenes.ts` take a frame and a `dt`; that is the whole interface a scene needs.
 
-Scenes: `radial` (default — ring bars, colored rays per bin with bass at the bottom, afterglow beams, starfield disc,
+Scenes: `pulse` (red-phosphor CRT: segmented meter rays in one red, glow pass, scanlines, vignette and a monospace
+telemetry HUD — the GPU Pulse look), `radial` (default — ring bars, colored rays per bin with bass at the bottom, afterglow beams, starfield disc,
 rotating emblem; drop a `web/public/logo.png` to replace the placeholder trefoil), `nebula`, `rings`.
