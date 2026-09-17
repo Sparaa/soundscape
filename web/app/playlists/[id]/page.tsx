@@ -37,7 +37,7 @@ export default function PlaylistPage() {
       <header className="flex items-baseline gap-4 flex-wrap"><Link href="/playlists" className="text-zinc-500 hover:text-zinc-200">← playlists</Link>
         <h1 className="text-3xl font-semibold tracking-tight">{pl.name}</h1><span className="text-xs text-zinc-500">{pl.items.length} songs · {mmss(pl.seconds)}</span>
         <div className="ml-auto flex gap-2 text-xs">
-          <button onClick={() => playFrom(0)} disabled={!pl.items.length} className="px-3 py-1 rounded-full bg-zinc-100 text-black font-medium disabled:opacity-40">▶ Play all</button>
+          <button onClick={() => playFrom(0)} disabled={!pl.items.length} className="px-3 py-1 rounded-full bg-zinc-100 text-black font-medium disabled:opacity-40">▸ Play all</button>
           {player && <button onClick={() => { player.stop(); }} className="px-3 py-1 rounded-full border border-zinc-600">■ Stop</button>}
           <a href={playlistExportUrl(pl.id)} className="px-3 py-1 rounded-full border border-zinc-700">export .zip</a>
         </div>
@@ -47,7 +47,7 @@ export default function PlaylistPage() {
       {pl.items.map((s, i) => (
         <SongRow key={s.id} song={s} onChange={(u) => setPl({ ...pl, items: pl.items.map((x) => (x.id === u.id ? u : x)) })}
                  extra={<span className="flex gap-1 text-xs">
-                   <button onClick={() => playFrom(i)} className="px-2 py-1 rounded border border-zinc-700">▶</button>
+                   <button onClick={() => playFrom(i)} className="px-2 py-1 rounded border border-zinc-700">▸</button>
                    <button onClick={() => reorder(i, i - 1)} disabled={i === 0} className="px-2 py-1 rounded border border-zinc-800 disabled:opacity-30">↑</button>
                    <button onClick={() => reorder(i, i + 1)} disabled={i === pl.items.length - 1} className="px-2 py-1 rounded border border-zinc-800 disabled:opacity-30">↓</button>
                    <button onClick={async () => setPl(await removeFromPlaylist(pl.id, s.id))} className="px-2 py-1 text-zinc-500 hover:text-red-400">remove</button>

@@ -44,6 +44,7 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
   useEffect(() => { void refresh(); const id = window.setInterval(refresh, 2000); return () => window.clearInterval(id); }, [refresh]);
   useEffect(() => { const id = window.setInterval(() => player.current && setPos(player.current.position()), 500); return () => window.clearInterval(id); }, []);
   useEffect(() => () => player.current?.stop(), []);
+  useEffect(() => { document.documentElement.dataset.scene = scene; return () => { delete document.documentElement.dataset.scene; }; }, [scene]);
 
   const getPlayer = () => {
     if (!player.current) {
@@ -120,11 +121,11 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
       <div className="pane flex flex-col gap-3">
         <div className="flex items-center gap-3">
           {!live ? (
-            <button onClick={onPlay} disabled={!station.profile} className="px-5 py-2 rounded-full bg-zinc-100 text-black font-medium disabled:opacity-40">▶ Play</button>
+            <button onClick={onPlay} disabled={!station.profile} className="px-5 py-2 rounded-full bg-zinc-100 text-black font-medium disabled:opacity-40">▸ Play</button>
           ) : (
             <button onClick={onStop} className="px-5 py-2 rounded-full border border-zinc-600">■ Stop</button>
           )}
-          <button onClick={onSkip} disabled={!song} className="px-3 py-2 rounded-full border border-zinc-800 disabled:opacity-40">⏭ Skip</button>
+          <button onClick={onSkip} disabled={!song} className="px-3 py-2 rounded-full border border-zinc-800 disabled:opacity-40">» Skip</button>
           <div className="ml-auto flex rounded-full border border-zinc-700 overflow-hidden text-xs" title="What plays next: fresh songs from the agent, or this station's saved songs">
             <button onClick={toRadio} className={`px-3 py-1.5 ${mode === "radio" ? "bg-zinc-100 text-black" : "text-zinc-400"}`}>new</button>
             <button onClick={() => { setMode("playlist"); if (!song) void playSaved(0); }} disabled={!playlist?.items.length} className={`px-3 py-1.5 disabled:opacity-40 ${mode === "playlist" ? "bg-zinc-100 text-black" : "text-zinc-400"}`}>saved</button>
@@ -132,7 +133,7 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
         </div>
         <div className="text-xs text-zinc-500 font-mono">{mode === "radio" ? `${status?.state ?? "…"} · ${status?.ready.length ?? 0} cued` : `playlist · song ${plIndex.current + 1} of ${playlist?.items.length ?? 0}`}</div>
         <label className="text-xs text-zinc-400 flex items-center gap-3"><span className="whitespace-nowrap">covers</span>
-          <input type="range" min={0} max={2} step={0.25} value={covers} onChange={async (e) => onStation(await patchSettings(sid, { covers: Number(e.target.value) }))} className="flex-1 accent-amber-500" />
+          <input type="range" min={0} max={2} step={0.25} value={covers} onChange={async (e) => onStation(await patchSettings(sid, { covers: Number(e.target.value) }))} className="flex-1 range" />
           <span className="whitespace-nowrap">new</span>
         </label>
         {song ? (
@@ -143,8 +144,8 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
             <div className="text-xs text-zinc-500 font-mono">{mmss(pos.t)} / {mmss(pos.d)}</div>
             <div className="flex gap-2 text-xs">
               <button onClick={() => flag(song, { saved: !song.saved })} className={`px-2 py-1 rounded border ${song.saved ? "border-emerald-500 text-emerald-300" : "border-zinc-700"}`}>{song.saved ? "saved" : "save"}</button>
-              <button onClick={() => flag(song, { vote: song.vote > 0 ? 0 : 1 })} className={`px-2 py-1 rounded border ${song.vote > 0 ? "border-pink-500 text-pink-300" : "border-zinc-700"}`} title="more like this — steers the station">{song.vote > 0 ? "♥ more like this" : "♡ more like this"}</button>
-              <button onClick={() => flag(song, { vote: song.vote < 0 ? 0 : -1 })} className={`px-2 py-1 rounded border ${song.vote < 0 ? "border-amber-500 text-amber-300" : "border-zinc-700"}`} title="less like this — steers the station away">{song.vote < 0 ? "👎 less like this" : "👎 less"}</button>
+              <button onClick={() => flag(song, { vote: song.vote > 0 ? 0 : 1 })} className={`px-2 py-1 rounded border ${song.vote > 0 ? "border-pink-500 text-pink-300" : "border-zinc-700"}`} title="more like this — steers the station">{song.vote > 0 ? "↑ more like this ✓" : "↑ more like this"}</button>
+              <button onClick={() => flag(song, { vote: song.vote < 0 ? 0 : -1 })} className={`px-2 py-1 rounded border ${song.vote < 0 ? "border-amber-500 text-amber-300" : "border-zinc-700"}`} title="less like this — steers the station away">{song.vote < 0 ? "↓ less like this ✓" : "↓ less"}</button>
               <Link href="/library" className="px-2 py-1 text-zinc-500 hover:text-zinc-200">library →</Link>
             </div>
             {song.lyrics && <pre className="text-xs text-zinc-400 whitespace-pre-wrap font-sans mt-2 max-h-48 overflow-auto">{song.lyrics}</pre>}
@@ -182,7 +183,7 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-3 text-xs text-zinc-500">
               <span>{playlist ? `${playlist.items.length} songs · ${mmss(playlist.seconds)}` : "…"}</span>
-              <button onClick={() => playSaved(0)} disabled={!playlist?.items.length} className="px-2 py-0.5 rounded border border-zinc-700 text-zinc-300 disabled:opacity-40">▶ play all</button>
+              <button onClick={() => playSaved(0)} disabled={!playlist?.items.length} className="px-2 py-0.5 rounded border border-zinc-700 text-zinc-300 disabled:opacity-40">▸ play all</button>
               {playlist && <Link href={`/playlists/${playlist.id}`} className="hover:text-zinc-200">reorder →</Link>}
               {playlist && <a href={playlistExportUrl(playlist.id)} className="hover:text-zinc-200">export .zip</a>}
             </div>
@@ -192,12 +193,12 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
                 const on = song?.id === s.id;
                 return (
                   <div key={s.id} className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg ${on ? "bg-zinc-800/80" : "hover:bg-zinc-900"}`}>
-                    <button onClick={() => playSaved(i)} className={`w-6 text-center ${on ? "text-amber-400" : "text-zinc-500 group-hover:text-zinc-100"}`} title="Play this song now">{on && !paused ? "♪" : "▶"}</button>
+                    <button onClick={() => playSaved(i)} className={`w-6 text-center ${on ? "text-zinc-50" : "text-zinc-500 group-hover:text-zinc-100"}`} title="Play this song now">{on && !paused ? <span className="now-cursor">▮</span> : "▸"}</button>
                     <button onClick={() => playSaved(i)} className="flex-1 min-w-0 text-left">
                       <div className={`text-sm truncate ${on ? "text-zinc-50 font-medium" : "text-zinc-200"}`}>{s.title}</div>
                       <div className="text-[11px] text-zinc-500 truncate">{planLabel(s.plan) || s.explain}</div>
                     </button>
-                    <span className="text-[11px] text-zinc-500 font-mono">{s.vote > 0 ? "♥ " : s.vote < 0 ? "👎 " : ""}{mmss(s.seconds)}</span>
+                    <span className="text-[11px] text-zinc-500 font-mono">{s.vote > 0 ? "↑ " : s.vote < 0 ? "↓ " : ""}{mmss(s.seconds)}</span>
                     <button onClick={async () => { if (playlist) setPlaylist(await removeFromPlaylist(playlist.id, s.id)); }} className="text-zinc-700 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100" title="Remove from this playlist (the file stays in the library)">✕</button>
                   </div>
                 );

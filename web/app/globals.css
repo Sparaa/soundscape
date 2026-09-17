@@ -16,3 +16,53 @@ body { @apply bg-black text-zinc-100 antialiased; }
   background: radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(8,0,0,.55) 85%, rgba(0,0,0,.92) 100%);
   box-shadow: inset 0 0 120px rgba(0,0,0,.9), inset 0 0 28px rgba(255,30,50,.10); }
 @media (prefers-reduced-motion: reduce) { .crt-scanlines::after { animation: none; display: none; } }
+
+/* ---- terminal panes (active with the pulse scene): neutral white phosphor so the scope stays the only red ---------- */
+.now-cursor { animation: cursor-blink 1.1s steps(1) infinite; }
+@keyframes cursor-blink { 50% { opacity: .25; } }
+input.range { accent-color: #d4d4d8; }
+[data-scene="pulse"] { --ph: #d8dedc; --ph-2: #939a98; --ph-3: #5f6664; --ph-line: #3b4140; --ph-bg: rgba(5, 6, 6, .84); }
+[data-scene="pulse"] .pane {
+  position: relative; border-radius: 2px; border: 1px solid var(--ph-line); background: var(--ph-bg); box-shadow: none;
+  backdrop-filter: blur(6px); color: var(--ph);
+  font-family: ui-monospace, "JetBrains Mono", "IBM Plex Mono", "DejaVu Sans Mono", Menlo, Consolas, monospace; font-size: 13px;
+  text-shadow: 0 0 6px rgba(216, 222, 220, .22);
+}
+[data-scene="pulse"] .pane::before {            /* faint scanlines over the pane; never eats clicks or contrast */
+  content: ""; position: absolute; inset: 0; pointer-events: none; border-radius: inherit;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.16) 2px 3px);
+}
+[data-scene="pulse"] .pane::after {             /* corner ticks, like an instrument bezel */
+  content: ""; position: absolute; inset: -1px; pointer-events: none;
+  background:
+    linear-gradient(var(--ph), var(--ph)) top left / 10px 1px no-repeat, linear-gradient(var(--ph), var(--ph)) top left / 1px 10px no-repeat,
+    linear-gradient(var(--ph), var(--ph)) top right / 10px 1px no-repeat, linear-gradient(var(--ph), var(--ph)) top right / 1px 10px no-repeat,
+    linear-gradient(var(--ph), var(--ph)) bottom left / 10px 1px no-repeat, linear-gradient(var(--ph), var(--ph)) bottom left / 1px 10px no-repeat,
+    linear-gradient(var(--ph), var(--ph)) bottom right / 10px 1px no-repeat, linear-gradient(var(--ph), var(--ph)) bottom right / 1px 10px no-repeat;
+}
+[data-scene="pulse"] .pane * { font-family: inherit; border-radius: 2px !important; }
+[data-scene="pulse"] .pane h1, [data-scene="pulse"] .pane .text-2xl { letter-spacing: .02em; text-transform: uppercase; text-shadow: 0 0 10px rgba(216, 222, 220, .35); }
+[data-scene="pulse"] .pane .text-2xl { font-size: 1.25rem; line-height: 1.6rem; }
+[data-scene="pulse"] .pane h2, [data-scene="pulse"] .pane .uppercase { letter-spacing: .14em; }
+/* text tiers: three greys, nothing coloured */
+[data-scene="pulse"] .pane [class*="text-zinc-5"], [data-scene="pulse"] .pane [class*="text-zinc-6"], [data-scene="pulse"] .pane [class*="text-zinc-7"] { color: var(--ph-3) !important; }
+[data-scene="pulse"] .pane [class*="text-zinc-4"] { color: var(--ph-2) !important; }
+[data-scene="pulse"] .pane [class*="text-zinc-2"], [data-scene="pulse"] .pane [class*="text-zinc-3"], [data-scene="pulse"] .pane [class*="text-zinc-1"], [data-scene="pulse"] .pane [class*="text-zinc-50"] { color: var(--ph) !important; }
+[data-scene="pulse"] .pane [class*="emerald"], [data-scene="pulse"] .pane [class*="pink"], [data-scene="pulse"] .pane [class*="amber"] { color: var(--ph) !important; border-color: var(--ph) !important; }
+[data-scene="pulse"] .pane [class*="text-red"] { color: #e8a0a0 !important; }
+/* controls: thin frames, inverse video when active */
+[data-scene="pulse"] .pane button, [data-scene="pulse"] .pane a[class*="border"], [data-scene="pulse"] .pane select, [data-scene="pulse"] .pane input:not([type="range"]) {
+  border-color: var(--ph-line) !important; text-transform: uppercase; letter-spacing: .06em; font-size: 11.5px; background-color: transparent; }
+[data-scene="pulse"] .pane button:hover:not(:disabled) { border-color: var(--ph) !important; color: var(--ph) !important; }
+[data-scene="pulse"] .pane [class*="bg-zinc-100"] { background: var(--ph) !important; color: #050606 !important; text-shadow: none; border-color: var(--ph) !important; }
+[data-scene="pulse"] .pane [class*="bg-zinc-100"]:hover:not(:disabled) { color: #050606 !important; }
+[data-scene="pulse"] .pane [class*="border-zinc-300"] { border-color: var(--ph) !important; color: var(--ph) !important; }
+[data-scene="pulse"] .pane [class*="bg-zinc-800"], [data-scene="pulse"] .pane [class*="bg-zinc-900"] { background: rgba(216, 222, 220, .07) !important; }
+[data-scene="pulse"] .pane [class*="hover:bg-zinc-900"]:hover { background: rgba(216, 222, 220, .05) !important; }
+[data-scene="pulse"] .pane .h-1.bg-zinc-800 { background: var(--ph-line) !important; }
+[data-scene="pulse"] .pane .h-1.bg-zinc-200 { background: var(--ph) !important; box-shadow: 0 0 8px rgba(216, 222, 220, .5); }
+[data-scene="pulse"] .pane [class*="border-zinc-8"], [data-scene="pulse"] .pane [class*="border-zinc-7"], [data-scene="pulse"] .pane [class*="border-zinc-6"] { border-color: var(--ph-line) !important; }
+[data-scene="pulse"] .pane input.range { accent-color: var(--ph); }
+[data-scene="pulse"] .pane pre { font-size: 12.5px; line-height: 1.55; color: var(--ph-2) !important; text-transform: none; }
+[data-scene="pulse"] .pane audio { filter: grayscale(1) invert(.92) contrast(.9); height: 28px; }
+[data-scene="pulse"] .pane ::-webkit-scrollbar { width: 6px; } [data-scene="pulse"] .pane ::-webkit-scrollbar-thumb { background: var(--ph-line); }
