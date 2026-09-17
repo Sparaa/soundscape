@@ -64,3 +64,11 @@ def test_radio_buffers_two_then_keeps_one_spare(tmp_path):
         await asyncio.sleep(0.05)
     asyncio.run(scenario())
     assert rendered[0] == "inspired"
+    # every cued (gate-passing) song was auto-saved into the station's own playlist; the rejected one was not
+    pid = json.loads(con.execute("SELECT settings FROM stations WHERE id='s1'").fetchone()["settings"])["playlist_id"]
+    assert con.execute("SELECT name FROM playlists WHERE id=?", (pid,)).fetchone()["name"] == "S — radio"
+    listed = [r["song_id"] for r in con.execute("SELECT song_id FROM playlist_items WHERE playlist_id=? ORDER BY position", (pid,))]
+    cued = [r["id"] for r in con.execute("SELECT id FROM songs WHERE station_id='s1' AND status != 'rejected' ORDER BY created")]
+    assert listed == cued and len(listed) >= 3
+    assert all(r["saved"] == 1 for r in con.execute("SELECT saved FROM songs WHERE status != 'rejected'"))
+    assert con.execute("SELECT saved FROM songs WHERE status='rejected'").fetchone()["saved"] == 0

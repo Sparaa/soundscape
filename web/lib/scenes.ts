@@ -104,94 +104,89 @@ export function rings(n = 48): Scene {
 
 export const SCENES: Record<string, () => Scene> = { nebula, rings };   // radial is added below and is the default
 
-/** Radial analyzer, mid-century modern: chunky flat bars in a few solid colors (mustard, burnt orange, teal, olive,
- * cream), no glow — a darker "shadow" bar holds each bin's recent peak. The centre is an atomic-age motif: a solid disc
- * with record grooves that breathe with the bass, three tilted orbits with satellites, and the rotating emblem
- * (placeholder trefoil until web/public/logo.png exists). Bass at the bottom, highs at the top, mirrored. */
-export function radial(bins = 48): Scene {
+/** Radial analyzer, mid-century modern. Everything is FLAT geometry on separate z layers with depth testing off
+ * (boxes on a shared plane z-fought and neighbouring bars overlapped into a smeared ring): shadow bars → bright bars →
+ * ring ticks → disc → grooves → wheel. 36 bins per side keep a visible gap between chunky bars. The centre is a large
+ * spinning wheel (ring + three curved spokes) built from real geometry so it has thickness; web/public/logo.png
+ * replaces it when present. Bass at the bottom, highs at the top, mirrored. */
+export function radial(bins = 36): Scene {
   const N = bins * 2;
   const group = new THREE.Group();
-  const R_RING = 1.0, R_RAY = 1.22;
+  const R_RING = 1.0, R_RAY = 1.2;
   const dummy = new THREE.Object3D(), color = new THREE.Color();
-  // mid-century palette (solid): bottom → top
   const PALETTE = [0xc8452b, 0xe07a1f, 0xe9b83a, 0xf0dfb5, 0x3f8f8a, 0x6b7f3a];
-  const mk = (w: number, d: number) => { const g = new THREE.BoxGeometry(w, 1, d); g.translate(0, 0.5, 0); return g; };
-  const ringGeo = mk(0.05, 0.05), rayGeo = mk(0.1, 0.1), shadowGeo = mk(0.1, 0.06);
-  const flat = () => new THREE.MeshBasicMaterial();   // per-instance colors come from setColorAt; vertexColors would multiply by a missing attribute (= black)
-  const ring = new THREE.InstancedMesh(ringGeo, flat(), N), rays = new THREE.InstancedMesh(rayGeo, flat(), N), shadow = new THREE.InstancedMesh(shadowGeo, flat(), N);
-  for (const m of [shadow, ring, rays]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); group.add(m); }
-  // centre: disc + grooves + orbits + emblem
-  const discMat = new THREE.MeshBasicMaterial({ color: 0x1b2430 });
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(R_RING - 0.04, 96), discMat); disc.position.z = -0.03; group.add(disc);
-  const grooveMat = new THREE.LineBasicMaterial({ color: 0x2c3a4a, transparent: true, opacity: 0.9 });
-  const grooves: THREE.Line[] = [];
-  for (let g = 0; g < 6; g++) {
-    const r = 0.5 + g * 0.08, pts: THREE.Vector3[] = [];
-    for (let k = 0; k <= 96; k++) { const a = (k / 96) * Math.PI * 2; pts.push(new THREE.Vector3(r * Math.cos(a), r * Math.sin(a), 0)); }
-    const l = new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), grooveMat); l.position.z = -0.02; group.add(l); grooves.push(l);
-  }
-  const orbits: THREE.Group[] = [], sats: THREE.Mesh[] = [];
-  const satMat = new THREE.MeshBasicMaterial({ color: 0xe9b83a });
-  for (let o = 0; o < 3; o++) {
-    const og = new THREE.Group();
-    const pts: THREE.Vector3[] = [];
-    for (let k = 0; k <= 96; k++) { const a = (k / 96) * Math.PI * 2; pts.push(new THREE.Vector3(0.78 * Math.cos(a), 0.3 * Math.sin(a), 0)); }
-    og.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: [0xe07a1f, 0x3f8f8a, 0xf0dfb5][o], transparent: true, opacity: 0.7 })));
-    const sat = new THREE.Mesh(new THREE.CircleGeometry(0.035, 16), satMat); og.add(sat); sats.push(sat);
-    og.rotation.z = (o / 3) * Math.PI; og.position.z = 0.005 + o * 0.002;
-    group.add(og); orbits.push(og);
-  }
-  const emblem = new THREE.Group();
-  const emblemMat = new THREE.LineBasicMaterial({ color: 0xf0dfb5, transparent: true, opacity: 0.95 });
-  const circle: THREE.Vector3[] = [];
-  for (let k = 0; k <= 72; k++) { const a = (k / 72) * Math.PI * 2; circle.push(new THREE.Vector3(0.3 * Math.cos(a), 0.3 * Math.sin(a), 0)); }
-  emblem.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(circle), emblemMat));
+  const spacing = (2 * Math.PI * R_RAY) / N;                       // arc length per bar at the ray radius
+  const bar = (w: number) => { const g = new THREE.PlaneGeometry(w, 1); g.translate(0, 0.5, 0); return g; };
+  const flatMat = () => new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false });
+  const rayGeo = bar(spacing * 0.72), shadowGeo = bar(spacing * 0.72), tickGeo = bar(((2 * Math.PI * R_RING) / N) * 0.6);
+  const shadow = new THREE.InstancedMesh(shadowGeo, flatMat(), N), rays = new THREE.InstancedMesh(rayGeo, flatMat(), N), ticks = new THREE.InstancedMesh(tickGeo, flatMat(), N);
+  [shadow, rays, ticks].forEach((m, i) => { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.renderOrder = i; m.frustumCulled = false; group.add(m); });
+  const discMat = new THREE.MeshBasicMaterial({ color: 0x1b2430, depthTest: false, depthWrite: false });
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(R_RING - 0.05, 128), discMat); disc.renderOrder = 3; group.add(disc);
+  const grooveMat = new THREE.MeshBasicMaterial({ color: 0x263242, depthTest: false, depthWrite: false });
+  const grooves: THREE.Mesh[] = [];
+  for (let g = 0; g < 4; g++) { const r = 0.72 + g * 0.055; const m = new THREE.Mesh(new THREE.RingGeometry(r, r + 0.006, 128), grooveMat); m.renderOrder = 4; group.add(m); grooves.push(m); }
+  // the wheel: a thick ring and three curved spokes as ribbons
+  const wheel = new THREE.Group();
+  const wheelMat = new THREE.MeshBasicMaterial({ color: 0xf0dfb5, depthTest: false, depthWrite: false, side: THREE.DoubleSide });
+  const R_WHEEL = 0.62, T = 0.045;
+  const rim = new THREE.Mesh(new THREE.RingGeometry(R_WHEEL - T, R_WHEEL, 128), wheelMat); rim.renderOrder = 5; wheel.add(rim);
+  const hub = new THREE.Mesh(new THREE.CircleGeometry(T * 1.4, 32), wheelMat); hub.renderOrder = 5; wheel.add(hub);
+  const ribbon = (pts: THREE.Vector2[], width: number) => {        // a strip of quads along a polyline
+    const pos: number[] = [], idx: number[] = [];
+    for (let k = 0; k < pts.length; k++) {
+      const a = pts[Math.max(0, k - 1)], b = pts[Math.min(pts.length - 1, k + 1)];
+      const nx = -(b.y - a.y), ny = b.x - a.x, len = Math.hypot(nx, ny) || 1;
+      pos.push(pts[k].x + (nx / len) * width / 2, pts[k].y + (ny / len) * width / 2, 0, pts[k].x - (nx / len) * width / 2, pts[k].y - (ny / len) * width / 2, 0);
+      if (k < pts.length - 1) idx.push(2 * k, 2 * k + 1, 2 * k + 2, 2 * k + 1, 2 * k + 3, 2 * k + 2);
+    }
+    const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;
+  };
+  const spokeGeos: THREE.BufferGeometry[] = [];
   for (let i = 0; i < 3; i++) {
-    const a0 = (i / 3) * Math.PI * 2 + Math.PI / 2, pts: THREE.Vector3[] = [];
-    for (let k = 0; k <= 24; k++) { const t = k / 24, r = 0.3 * (1 - t), ang = a0 + t * 0.9; pts.push(new THREE.Vector3(r * Math.cos(ang), r * Math.sin(ang), 0.002)); }
-    emblem.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), emblemMat));
+    const a0 = (i / 3) * Math.PI * 2 + Math.PI / 2, pts: THREE.Vector2[] = [];
+    for (let k = 0; k <= 32; k++) { const t = k / 32, r = (R_WHEEL - T / 2) * (1 - t), ang = a0 + t * 1.0; pts.push(new THREE.Vector2(r * Math.cos(ang), r * Math.sin(ang))); }
+    const g = ribbon(pts, T * 0.9); spokeGeos.push(g);
+    const m = new THREE.Mesh(g, wheelMat); m.renderOrder = 5; wheel.add(m);
   }
-  emblem.position.z = 0.02; group.add(emblem);
+  group.add(wheel);
   let logo: THREE.Mesh | null = null;
   new THREE.TextureLoader().load("/logo.png", (tex) => {
-    emblem.visible = false;
-    logo = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ map: tex, transparent: true }));
-    logo.position.z = 0.02; group.add(logo);
+    wheel.visible = false;
+    logo = new THREE.Mesh(new THREE.PlaneGeometry(R_WHEEL * 2, R_WHEEL * 2), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthTest: false, depthWrite: false }));
+    logo.renderOrder = 5; group.add(logo);
   }, undefined, () => undefined);
   const level = new Float32Array(bins), peak = new Float32Array(bins);
   let t = 0;
-  const angleOf = (i: number, side: number) => -Math.PI / 2 + side * (i / (bins - 1)) * Math.PI;
+  const angleOf = (i: number, side: number) => -Math.PI / 2 + side * ((i + 0.5) / bins) * Math.PI;   // +0.5: no bar exactly on the mirror seam
   return {
     name: "radial", object: group,
     update(f, dt) {
       t += dt;
       const spec = f.spectrum ?? new Array(bins).fill(f.bands.rms);
       for (let i = 0; i < bins; i++) {
-        const v = Math.pow(spec[Math.min(spec.length - 1, Math.floor((i / bins) * spec.length))] ?? 0, 1.3);
+        const v = Math.pow(spec[Math.min(spec.length - 1, Math.floor((i / bins) * spec.length))] ?? 0, 1.15);
         level[i] = v > level[i] ? level[i] + (v - level[i]) * 0.55 : level[i] + (v - level[i]) * 0.1;
         peak[i] = Math.max(level[i], peak[i] - dt * 0.3);
       }
       for (let k = 0; k < N; k++) {
         const i = k % bins, side = k < bins ? 1 : -1, a = angleOf(i, side);
         const cx = Math.cos(a), cy = Math.sin(a), rot = a - Math.PI / 2, lv = level[i], pk = peak[i];
-        const band = Math.min(PALETTE.length - 1, Math.floor((i / bins) * PALETTE.length));
-        color.setHex(PALETTE[band]);
-        dummy.position.set(cx * R_RING, cy * R_RING, 0.02); dummy.rotation.set(0, 0, rot); dummy.scale.set(1, 0.06 + lv * 0.2, 1); dummy.updateMatrix(); ring.setMatrixAt(k, dummy.matrix);
-        ring.setColorAt(k, color.clone().offsetHSL(0, -0.3, 0.25));
-        const len = 0.08 + lv * 2.4 * (1 + 0.12 * f.beat.hit);
-        dummy.position.set(cx * R_RAY, cy * R_RAY, 0.03); dummy.scale.set(1, len, 1); dummy.updateMatrix(); rays.setMatrixAt(k, dummy.matrix);
+        color.setHex(PALETTE[Math.min(PALETTE.length - 1, Math.floor((i / bins) * PALETTE.length))]);
+        dummy.rotation.set(0, 0, rot);
+        dummy.position.set(cx * R_RAY, cy * R_RAY, 0); dummy.scale.set(1, 0.06 + pk * 2.8, 1); dummy.updateMatrix(); shadow.setMatrixAt(k, dummy.matrix);
+        shadow.setColorAt(k, color.clone().multiplyScalar(0.33));
+        dummy.scale.set(1, 0.05 + lv * 2.6 * (1 + 0.12 * f.beat.hit), 1); dummy.updateMatrix(); rays.setMatrixAt(k, dummy.matrix);
         rays.setColorAt(k, color);
-        dummy.position.set(cx * R_RAY, cy * R_RAY, 0.0); dummy.scale.set(1, 0.1 + pk * 2.6, 1); dummy.updateMatrix(); shadow.setMatrixAt(k, dummy.matrix);
-        shadow.setColorAt(k, color.clone().multiplyScalar(0.35));
+        dummy.position.set(cx * (R_RING + 0.02), cy * (R_RING + 0.02), 0); dummy.scale.set(1, 0.07 + lv * 0.08, 1); dummy.updateMatrix(); ticks.setMatrixAt(k, dummy.matrix);
+        ticks.setColorAt(k, color.clone().offsetHSL(0, -0.25, 0.22));
       }
-      for (const m of [ring, rays, shadow]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
-      grooves.forEach((g, i) => { g.scale.setScalar(1 + 0.05 * f.bands.bass * (1 - i / 6) + 0.03 * f.beat.hit); });
-      orbits.forEach((o, i) => { o.rotation.z = (i / 3) * Math.PI + t * (0.12 + i * 0.05) * (i % 2 ? -1 : 1); });
-      sats.forEach((s, i) => { const ph = t * (0.6 + i * 0.2) + i * 2.1; s.position.set(0.78 * Math.cos(ph), 0.3 * Math.sin(ph), 0.003); s.scale.setScalar(1 + 0.6 * f.beat.hit); });
-      emblem.rotation.z = -t * 0.2; if (logo) logo.rotation.z = -t * 0.2;
-      discMat.color.setHex(0x1b2430).offsetHSL(0, 0, 0.04 * f.bands.bass);
+      for (const m of [shadow, rays, ticks]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+      grooves.forEach((g, i) => g.scale.setScalar(1 + 0.03 * f.bands.bass * (1 - i / 4)));
+      wheel.rotation.z = -t * 0.35 - f.beat.hit * 0.04; wheel.scale.setScalar(1 + 0.03 * f.beat.hit);
+      if (logo) { logo.rotation.z = -t * 0.35; logo.scale.setScalar(1 + 0.03 * f.beat.hit); }
     },
-    dispose() { for (const g of [ringGeo, rayGeo, shadowGeo]) g.dispose(); for (const m of [ring.material, rays.material, shadow.material, discMat, grooveMat, satMat, emblemMat]) (m as THREE.Material).dispose(); },
+    dispose() { for (const g of [rayGeo, shadowGeo, tickGeo, ...spokeGeos]) g.dispose(); for (const m of [shadow.material, rays.material, ticks.material, discMat, grooveMat, wheelMat]) (m as THREE.Material).dispose(); },
   };
 }
 SCENES.radial = radial;

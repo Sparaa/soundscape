@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
-from . import abc as abclib, agent, gate, llm as llmmod, steer
+from . import abc as abclib, agent, gate, library, llm as llmmod, steer
 
 log = logging.getLogger("soundscape.radio")
 TARGET = {"stopped": 0, "warming": 2, "playing": 2, "stopping": 1}
@@ -188,6 +188,37 @@ class Store:
                           json.dumps(song.get("plan")), song.get("seconds"), song["path"], time.time(), status, song.get("explain"),
                           json.dumps(song.get("gate")), json.dumps(song.get("tags")) if song.get("tags") else None))
         self.con.commit()
+        if status == "ready":
+            self.auto_playlist_add(sid, song["id"])
+
+    def auto_playlist_add(self, sid: str, song_id: str) -> str:
+        """Every song that passes the gate joins the station's own playlist ("<station> — radio"), which also marks it
+        saved so pruning never touches it. The playlist id lives in the station settings; a deleted playlist is recreated."""
+        row = self.con.execute("SELECT name, settings FROM stations WHERE id=?", (sid,)).fetchone()
+        settings = json.loads(row["settings"]) if row and row["settings"] else {}
+        pid = settings.get("playlist_id")
+        if not pid or not self.con.execute("SELECT 1 FROM playlists WHERE id=?", (pid,)).fetchone():
+            pid = library.create_playlist(self.con, f"{row['name'] if row else 'Station'} — radio")
+            settings["playlist_id"] = pid
+            self.con.execute("UPDATE stations SET settings=? WHERE id=?", (json.dumps(settings), sid))
+            self.con.commit()
+        if song_id not in library.playlist_items(self.con, pid):
+            library.add_item(self.con, pid, song_id)
+        return pid
+
+    def backfill_auto_playlists(self) -> int:
+        """Startup: songs cued before auto-save existed join their station's playlist (oldest first, idempotent)."""
+        n = 0
+        for r in self.con.execute("SELECT id, station_id FROM songs WHERE station_id IS NOT NULL AND status != 'rejected' ORDER BY created").fetchall():
+            pid_row = self.con.execute("SELECT settings FROM stations WHERE id=?", (r["station_id"],)).fetchone()
+            if not pid_row:
+                continue
+            pid = (json.loads(pid_row["settings"]) if pid_row["settings"] else {}).get("playlist_id")
+            if pid and r["id"] in library.playlist_items(self.con, pid):
+                continue
+            self.auto_playlist_add(r["station_id"], r["id"])
+            n += 1
+        return n
 
 
 def make_renderer(*, llm: llmmod.LLM, yue2, analyze_tags: Optional[Callable[[bytes], Awaitable[dict[str, Any] | None]]],

@@ -108,6 +108,23 @@ export class RadioPlayer {
     if (next) await this.crossfadeTo(next, 0.5);
   }
 
+  /** Stop = pause: the current song stays loaded so Play picks it up where it was (the server keeps a spare behind it). */
+  pause(): void {
+    if (this.timer) window.clearTimeout(this.timer);
+    this.timer = null;
+    for (const d of this.decks) d.el.pause();
+  }
+
+  get paused(): boolean { return !!this.current.song && this.current.el.paused; }
+
+  async resume(): Promise<boolean> {
+    if (!this.current.song) return false;
+    await this.ctx.resume();
+    await this.current.el.play();
+    this.tick();
+    return true;
+  }
+
   stop(): void {
     if (this.timer) window.clearTimeout(this.timer);
     this.timer = null;

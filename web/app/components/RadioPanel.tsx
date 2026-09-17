@@ -11,6 +11,7 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   const [song, setSong] = useState<Song | null>(null);
   const [pos, setPos] = useState({ t: 0, d: 0 });
   const [err, setErr] = useState<string | null>(null);
+  const [paused, setPaused] = useState(false);
   const [playerObj, setPlayerObj] = useState<RadioPlayer | null>(null);
   const [scene, setScene] = useState<string>(() => { try { return localStorage.getItem("soundscape.scene") ?? "radial"; } catch { return "radial"; } });
   const player = useRef<RadioPlayer | null>(null);
@@ -38,6 +39,7 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
       const st = await radioPlay(sid);
       setStatus(st);
       const p = getPlayer();
+      if (p.paused && (await p.resume())) { setPaused(false); return; }   // Stop paused it: pick the same song up again
       // start as soon as the first song is cued (the spare makes this instant after the first session)
       const first = (await radioNext(sid));
       setStatus(first.status);
@@ -51,15 +53,15 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
       }
     } catch (e) { setErr(String(e)); }
   };
-  const onStop = async () => { player.current?.stop(); setStatus(await radioStop(sid)); };
-  const onSkip = async () => { await getPlayer().skip(); };
+  const onStop = async () => { player.current?.pause(); setPaused(true); setStatus(await radioStop(sid)); };
+  const onSkip = async () => { if (paused) { await radioPlay(sid); setPaused(false); } await getPlayer().skip(); };
   const flag = async (s: Song, flags: { saved?: boolean; liked?: boolean; vote?: -1 | 0 | 1 }) => {
     const u = await patchSong(s.id, flags);
     if (song?.id === s.id) setSong(u);
     void refresh();
   };
   const covers = Number(station.settings?.covers ?? 1);
-  const live = status?.state === "playing" || status?.state === "warming";
+  const live = (status?.state === "playing" || status?.state === "warming") && !paused;
   return (
     <section className="flex flex-col gap-3">
       <Visualizer player={playerObj} song={song} tags={station.profile?.tags ?? null} sceneName={scene} label={`Soundscape · ${station.name}`} background

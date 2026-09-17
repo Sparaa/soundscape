@@ -18,6 +18,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
 }) {
   const host = useRef<HTMLDivElement | null>(null);
   const [fps, setFps] = useState(0);
+  const [rms, setRms] = useState(0);
   const songRef = useRef<Song | null>(song); songRef.current = song;
   const tagsRef = useRef(tags); tagsRef.current = tags;
 
@@ -64,7 +65,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
       channel?.postMessage(f);
       frames++;
       if (now - fpsT > 1000) {                         // adaptive quality: drop pixel ratio when below 45 fps
-        const cur = frames * 1000 / (now - fpsT); setFps(Math.round(cur)); frames = 0; fpsT = now;
+        const cur = frames * 1000 / (now - fpsT); setFps(Math.round(cur)); setRms(bands.rms); frames = 0; fpsT = now;
         if (cur < 45 && quality > 0.5) { quality -= 0.25; renderer.setPixelRatio(Math.min(2, window.devicePixelRatio) * quality); }
         else if (cur > 58 && quality < 1) { quality += 0.25; renderer.setPixelRatio(Math.min(2, window.devicePixelRatio) * quality); }
       }
@@ -82,7 +83,7 @@ export default function Visualizer({ player, song, tags, sceneName, onScene, lab
       <div className="absolute bottom-3 right-3 flex gap-1 text-[11px] text-zinc-500">
         {Object.keys(SCENES).map((n) => <button key={n} onClick={() => onScene(n)} className={`px-2 py-0.5 rounded border ${n === sceneName ? "border-zinc-300 text-zinc-100" : "border-zinc-800"}`}>{n}</button>)}
         <button onClick={fullscreen} className="px-2 py-0.5 rounded border border-zinc-800">⛶</button>
-        <span className="px-1 font-mono">{fps} fps</span>
+        <span className="px-1 font-mono" title="fps · analyser signal level (0.00 while a song plays = no audio reaching the analyser)">{fps} fps · {rms.toFixed(2)}</span>
       </div>
       {label && <div className="absolute top-4 left-5 text-zinc-500 text-xs tracking-[0.3em] uppercase pointer-events-none">{label}</div>}
       {song && <div className="absolute bottom-4 left-5 text-zinc-300 text-base pointer-events-none">{song.title}</div>}

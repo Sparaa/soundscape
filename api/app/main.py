@@ -63,6 +63,9 @@ def radio_for(sid: str) -> radio.Radio:
 @app.on_event("startup")
 async def _startup() -> None:
     con()
+    added = store().backfill_auto_playlists()
+    if added:
+        log.info("auto playlists: %d earlier songs added", added)
     state["prune_task"] = asyncio.create_task(_prune_loop())
 
 
