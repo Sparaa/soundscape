@@ -192,47 +192,59 @@ export function radial(bins = 36): Scene {
 SCENES.radial = radial;
 
 
-/** Pulse: the radial analyzer in GPU Pulse's red-phosphor CRT language. One hue. Each ray is a column of SEGMENTS like
- * a ▰▰▰▱▱ meter — lit segments bright red, unlit ones a dim ember, a hot segment riding the held peak — with an additive
- * glow pass behind the lit segments. Dark disc with range rings and a crosshair, the wheel in red. Scanlines, vignette
- * and the telemetry HUD are drawn by the Visualizer over the canvas. */
-export function pulse(bins = 36, segments = 14): Scene {
+/** Pulse: the radial analyzer as a red-phosphor CRT scope (GPU Pulse / Fallout-terminal red). One hue, fine grain:
+ * 64 bins per side (one per feed bin) × 26 small segments, the whole figure inside the screen. Lit segments are
+ * bright, the top one hot; between the level and the held peak the segments fade like phosphor persistence; unlit
+ * cells are barely-there embers. A soft additive bloom quad per bar stands in for tube glow. Scope furniture: range
+ * rings and spokes behind the bars, a near-black disc with a bright bezel, the spinning wheel in red. Scanlines, roll
+ * bar, glass vignette and the telemetry HUD are drawn over the canvas by the Visualizer. */
+export function pulse(bins = 64, segments = 26): Scene {
   const N = bins * 2, TOTAL = N * segments;
   const group = new THREE.Group();
-  const R_RING = 1.0, R_RAY = 1.18, SEG_LEN = 0.115, SEG_GAP = 0.03;
+  const R_RING = 0.74, R_RAY = 0.9, SEG_LEN = 0.022, PITCH = 0.032;
+  const R_OUT = R_RAY + segments * PITCH;
   const dummy = new THREE.Object3D(), color = new THREE.Color();
-  const HOT = new THREE.Color(0xff2a3c), LIT = new THREE.Color(0xe01428), DIM = new THREE.Color(0x3a0a10), PEAK = new THREE.Color(0xffb0b8);
+  const HOT = new THREE.Color(0xff4455), LIT = new THREE.Color(0xd8182c), TRAIL = new THREE.Color(0x7a101c), DIM = new THREE.Color(0x1d0508), PEAK = new THREE.Color(0xff6070);
   const spacing = (2 * Math.PI * R_RAY) / N;
-  const segGeo = new THREE.PlaneGeometry(spacing * 0.7, SEG_LEN); segGeo.translate(0, SEG_LEN / 2, 0);
-  const glowGeo = new THREE.PlaneGeometry(spacing * 1.5, SEG_LEN * 1.9); glowGeo.translate(0, SEG_LEN / 2, 0);
   const flat = (extra: THREE.MeshBasicMaterialParameters = {}) => new THREE.MeshBasicMaterial({ depthTest: false, depthWrite: false, ...extra });
-  const glow = new THREE.InstancedMesh(glowGeo, flat({ transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending }), TOTAL);
+  const statics: THREE.BufferGeometry[] = [];
+  const add = (geo: THREE.BufferGeometry, mat: THREE.Material, order: number, rotZ = 0) => { statics.push(geo); const m = new THREE.Mesh(geo, mat); m.renderOrder = order; m.rotation.z = rotZ; group.add(m); return m; };
+  // scope furniture behind everything: range rings + spokes
+  const gridMat = flat({ color: 0x2a070c });
+  for (let g = 0; g <= 4; g++) { const r = R_RAY + (g / 4) * (R_OUT - R_RAY); add(new THREE.RingGeometry(r, r + 0.004, 160), gridMat, 0); }
+  for (let k = 0; k < 12; k++) { const geo = new THREE.PlaneGeometry(R_OUT - R_RAY, 0.003); geo.translate(R_RAY + (R_OUT - R_RAY) / 2, 0, 0); add(geo, gridMat, 0, (k / 12) * Math.PI * 2); }
+  // bloom quad per bar (scaled to the lit length) + the segments
+  const bloomGeo = new THREE.PlaneGeometry(spacing * 2.2, 1); bloomGeo.translate(0, 0.5, 0);
+  const bloom = new THREE.InstancedMesh(bloomGeo, flat({ transparent: true, opacity: 0.16, blending: THREE.AdditiveBlending, color: 0xff2a3c }), N);
+  const segGeo = new THREE.PlaneGeometry(spacing * 0.58, SEG_LEN); segGeo.translate(0, SEG_LEN / 2, 0);
   const segs = new THREE.InstancedMesh(segGeo, flat(), TOTAL);
-  [glow, segs].forEach((m, i) => { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.renderOrder = i; m.frustumCulled = false; group.add(m); });
-  // static transforms: segment (k, j) sits at radius R_RAY + j * (SEG_LEN + SEG_GAP) along bar k's direction
+  bloom.renderOrder = 1; segs.renderOrder = 2;
+  for (const m of [bloom, segs]) { m.instanceMatrix.setUsage(THREE.DynamicDrawUsage); m.frustumCulled = false; group.add(m); }
   const angleOf = (i: number, side: number) => -Math.PI / 2 + side * ((i + 0.5) / bins) * Math.PI;
+  const dirs: [number, number, number][] = [];
   for (let k = 0; k < N; k++) {
-    const i = k % bins, side = k < bins ? 1 : -1, a = angleOf(i, side), cx = Math.cos(a), cy = Math.sin(a);
+    const a = angleOf(k % bins, k < bins ? 1 : -1), cx = Math.cos(a), cy = Math.sin(a); dirs.push([cx, cy, a - Math.PI / 2]);
     for (let j = 0; j < segments; j++) {
-      const r = R_RAY + j * (SEG_LEN + SEG_GAP);
+      const r = R_RAY + j * PITCH;
       dummy.position.set(cx * r, cy * r, 0); dummy.rotation.set(0, 0, a - Math.PI / 2); dummy.scale.set(1, 1, 1); dummy.updateMatrix();
-      segs.setMatrixAt(k * segments + j, dummy.matrix); glow.setMatrixAt(k * segments + j, dummy.matrix);
+      segs.setMatrixAt(k * segments + j, dummy.matrix);
     }
   }
-  // ring ticks, disc, range rings, crosshair, wheel
-  const tickGeo = new THREE.PlaneGeometry(((2 * Math.PI * R_RING) / N) * 0.55, 0.06); tickGeo.translate(0, 0.03, 0);
-  const ticks = new THREE.InstancedMesh(tickGeo, flat(), N); ticks.renderOrder = 2; ticks.frustumCulled = false; group.add(ticks);
-  for (let k = 0; k < N; k++) { const a = angleOf(k % bins, k < bins ? 1 : -1); dummy.position.set(Math.cos(a) * (R_RING + 0.02), Math.sin(a) * (R_RING + 0.02), 0); dummy.rotation.set(0, 0, a - Math.PI / 2); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); ticks.setMatrixAt(k, dummy.matrix); }
-  const discMat = flat({ color: 0x0d0203 });
-  const disc = new THREE.Mesh(new THREE.CircleGeometry(R_RING - 0.05, 128), discMat); disc.renderOrder = 3; group.add(disc);
-  const lineMat = flat({ color: 0x5a0d14 });
-  const statics: THREE.BufferGeometry[] = [];
-  for (let g = 0; g < 5; g++) { const r = 0.2 + g * 0.17, geo = new THREE.RingGeometry(r, r + 0.005, 128); statics.push(geo); const m = new THREE.Mesh(geo, lineMat); m.renderOrder = 4; group.add(m); }
-  for (const rot of [0, Math.PI / 2]) { const geo = new THREE.PlaneGeometry((R_RING - 0.05) * 2, 0.004); statics.push(geo); const m = new THREE.Mesh(geo, lineMat); m.rotation.z = rot; m.renderOrder = 4; group.add(m); }
+  // bezel ticks, disc, inner range rings + crosshair, wheel
+  const tickGeo = new THREE.PlaneGeometry(((2 * Math.PI * R_RING) / N) * 0.5, 0.035); tickGeo.translate(0, 0.0175, 0);
+  const ticks = new THREE.InstancedMesh(tickGeo, flat(), N); ticks.renderOrder = 3; ticks.frustumCulled = false; group.add(ticks);
+  for (let k = 0; k < N; k++) { const [cx, cy, rot] = dirs[k]; dummy.position.set(cx * (R_RING + 0.03), cy * (R_RING + 0.03), 0); dummy.rotation.set(0, 0, rot); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); ticks.setMatrixAt(k, dummy.matrix); }
+  const discMat = flat({ color: 0x080102 });
+  add(new THREE.CircleGeometry(R_RING, 160), discMat, 4);
+  const bezelMat = flat({ color: 0xd8182c });
+  add(new THREE.RingGeometry(R_RING - 0.008, R_RING, 160), bezelMat, 5);
+  const lineMat = flat({ color: 0x3a0a10 });
+  for (let g = 1; g <= 4; g++) { const r = (g / 5) * R_RING; add(new THREE.RingGeometry(r, r + 0.003, 128), lineMat, 5); }
+  for (const rot of [0, Math.PI / 2, Math.PI / 4, -Math.PI / 4]) add(new THREE.PlaneGeometry(R_RING * 2, 0.0025), lineMat, 5, rot);
   const wheel = new THREE.Group();
   const wheelMat = flat({ color: 0xe01428, side: THREE.DoubleSide });
-  const wheelGlow = flat({ color: 0xff2a3c, transparent: true, opacity: 0.18, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
-  const R_WHEEL = 0.62, T = 0.04;
+  const wheelGlow = flat({ color: 0xff2a3c, transparent: true, opacity: 0.12, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const R_WHEEL = 0.5, T = 0.03;
   const ribbon = (pts: THREE.Vector2[], width: number) => {
     const pos: number[] = [], idx: number[] = [];
     for (let k = 0; k < pts.length; k++) {
@@ -242,12 +254,12 @@ export function pulse(bins = 36, segments = 14): Scene {
     }
     const g = new THREE.BufferGeometry(); g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); return g;
   };
-  for (const [mat, grow, order] of [[wheelGlow, 2.4, 5], [wheelMat, 1, 6]] as [THREE.Material, number, number][]) {
-    const rimGeo = new THREE.RingGeometry(R_WHEEL - T * grow, R_WHEEL + T * (grow - 1), 128); statics.push(rimGeo);
+  for (const [mat, grow, order] of [[wheelGlow, 1.9, 6], [wheelMat, 1, 7]] as [THREE.Material, number, number][]) {
+    const half = (T * grow) / 2, rimGeo = new THREE.RingGeometry(R_WHEEL - T / 2 - half, R_WHEEL - T / 2 + half, 160); statics.push(rimGeo);
     const rim = new THREE.Mesh(rimGeo, mat); rim.renderOrder = order; wheel.add(rim);
     for (let i = 0; i < 3; i++) {
       const a0 = (i / 3) * Math.PI * 2 + Math.PI / 2, pts: THREE.Vector2[] = [];
-      for (let k = 0; k <= 32; k++) { const t = k / 32, r = (R_WHEEL - T / 2) * (1 - t), ang = a0 + t * 1.0; pts.push(new THREE.Vector2(r * Math.cos(ang), r * Math.sin(ang))); }
+      for (let k = 0; k <= 40; k++) { const t = k / 40, r = (R_WHEEL - T / 2) * (1 - t), ang = a0 + t * 1.0; pts.push(new THREE.Vector2(r * Math.cos(ang), r * Math.sin(ang))); }
       const g = ribbon(pts, T * 0.9 * grow); statics.push(g); const m = new THREE.Mesh(g, mat); m.renderOrder = order; wheel.add(m);
     }
   }
@@ -261,28 +273,31 @@ export function pulse(bins = 36, segments = 14): Scene {
       const spec = f.spectrum ?? new Array(bins).fill(f.bands.rms);
       for (let i = 0; i < bins; i++) {
         const v = Math.pow(spec[Math.min(spec.length - 1, Math.floor((i / bins) * spec.length))] ?? 0, 1.1);
-        level[i] = v > level[i] ? level[i] + (v - level[i]) * 0.6 : level[i] + (v - level[i]) * 0.12;
-        peak[i] = Math.max(level[i], peak[i] - dt * 0.28);
+        level[i] = v > level[i] ? level[i] + (v - level[i]) * 0.6 : level[i] + (v - level[i]) * 0.14;
+        peak[i] = Math.max(level[i], peak[i] - dt * 0.22);
       }
-      const flicker = 0.94 + 0.06 * Math.sin(t * 47.0) * Math.sin(t * 13.0);          // faint CRT instability
+      const flicker = 0.95 + 0.05 * Math.sin(t * 47.0) * Math.sin(t * 13.0);
       for (let k = 0; k < N; k++) {
-        const i = k % bins, lit = Math.round(level[i] * segments * (1 + 0.1 * f.beat.hit)), pk = Math.min(segments - 1, Math.round(peak[i] * segments));
+        const i = k % bins, lv = Math.min(1, level[i] * (1 + 0.08 * f.beat.hit)), lit = Math.round(lv * segments), pk = Math.min(segments - 1, Math.round(peak[i] * segments));
         for (let j = 0; j < segments; j++) {
-          const idx = k * segments + j, on = j < lit;
-          if (j === pk && pk >= lit && pk > 0) color.copy(PEAK).multiplyScalar(0.8 * flicker);
-          else if (on) color.copy(j >= lit - 1 ? HOT : LIT).multiplyScalar(flicker * (0.75 + 0.25 * (j / segments)));
-          else color.copy(DIM);
-          segs.setColorAt(idx, color);
-          glow.setColorAt(idx, on ? color : color.setRGB(0, 0, 0));
+          if (j < lit) color.copy(j === lit - 1 ? HOT : LIT).multiplyScalar(flicker * (0.7 + 0.3 * (j / segments)));
+          else if (j === pk && pk > 0) color.copy(PEAK).multiplyScalar(0.85 * flicker);
+          else if (j < pk) color.copy(TRAIL).multiplyScalar(0.35 + 0.65 * (1 - (j - lit) / Math.max(1, pk - lit)));   // phosphor persistence
+          else color.copy(DIM).multiplyScalar(Math.max(0.25, 1 - j / segments));                                           // embers fade outward
+          segs.setColorAt(k * segments + j, color);
         }
-        ticks.setColorAt(k, color.copy(level[i] > 0.05 ? LIT : DIM).multiplyScalar(0.6 + 0.4 * f.beat.hit));
+        const [cx, cy, rot] = dirs[k];
+        dummy.position.set(cx * R_RAY, cy * R_RAY, 0); dummy.rotation.set(0, 0, rot); dummy.scale.set(1, Math.max(0.0001, lit * PITCH), 1); dummy.updateMatrix(); bloom.setMatrixAt(k, dummy.matrix);
+        ticks.setColorAt(k, color.copy(lv > 0.06 ? LIT : TRAIL).multiplyScalar(0.55 + 0.45 * f.beat.hit));
       }
-      for (const m of [segs, glow, ticks]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
-      wheel.rotation.z = -t * 0.35 - f.beat.hit * 0.04; wheel.scale.setScalar(1 + 0.03 * f.beat.hit);
-      wheelGlow.opacity = 0.12 + 0.25 * f.bands.bass + 0.2 * f.beat.hit;
-      discMat.color.setRGB(0.05 + 0.05 * f.bands.bass, 0.008, 0.012);
+      bloom.instanceMatrix.needsUpdate = true;
+      for (const m of [segs, ticks]) if (m.instanceColor) m.instanceColor.needsUpdate = true;
+      wheel.rotation.z = -t * 0.35 - f.beat.hit * 0.04; wheel.scale.setScalar(1 + 0.025 * f.beat.hit);
+      wheelGlow.opacity = 0.08 + 0.18 * f.bands.bass + 0.15 * f.beat.hit;
+      bezelMat.color.copy(LIT).multiplyScalar(0.6 + 0.4 * f.beat.hit);
+      discMat.color.setRGB(0.03 + 0.03 * f.bands.bass, 0.004, 0.008);
     },
-    dispose() { for (const g of [segGeo, glowGeo, tickGeo, ...statics]) g.dispose(); for (const m of [segs.material, glow.material, ticks.material, discMat, lineMat, wheelMat, wheelGlow]) (m as THREE.Material).dispose(); },
+    dispose() { for (const g of [segGeo, bloomGeo, tickGeo, ...statics]) g.dispose(); for (const m of [segs.material, bloom.material, ticks.material, gridMat, discMat, bezelMat, lineMat, wheelMat, wheelGlow]) (m as THREE.Material).dispose(); },
   };
 }
 SCENES.pulse = pulse;

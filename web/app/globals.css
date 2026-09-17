@@ -6,6 +6,13 @@ body { @apply bg-black text-zinc-100 antialiased; }
 /* floating information panes over the full-screen visualizer (mid-century: warm cream type on smoked glass, amber accents) */
 .pane { @apply rounded-2xl border border-zinc-700/60 bg-zinc-950/75 p-4 shadow-xl; backdrop-filter: blur(10px); }
 
-/* pulse scene: CRT overlays (red phosphor — scanlines + vignette), purely cosmetic and click-through */
-.crt-scanlines { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 2px, rgba(0,0,0,.28) 3px, rgba(0,0,0,.28) 4px); mix-blend-mode: multiply; }
-.crt-vignette { position: absolute; inset: 0; pointer-events: none; background: radial-gradient(ellipse at center, rgba(0,0,0,0) 55%, rgba(10,0,0,.75) 100%); }
+/* pulse scene: CRT overlays (red phosphor) — fine scanlines, a slow roll bar, curved-glass vignette; cosmetic, click-through */
+.crt-scanlines { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: multiply;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0px, rgba(0,0,0,0) 1px, rgba(0,0,0,.42) 2px, rgba(0,0,0,.42) 3px); }
+.crt-scanlines::after { content: ""; position: absolute; left: 0; right: 0; height: 22%; top: -25%; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(255,60,80,0), rgba(255,60,80,.07) 50%, rgba(255,60,80,0)); animation: crt-roll 7s linear infinite; mix-blend-mode: screen; }
+@keyframes crt-roll { from { top: -25%; } to { top: 105%; } }
+.crt-vignette { position: absolute; inset: 0; pointer-events: none; border-radius: 2.2% / 3.5%;
+  background: radial-gradient(ellipse at center, rgba(0,0,0,0) 50%, rgba(8,0,0,.55) 85%, rgba(0,0,0,.92) 100%);
+  box-shadow: inset 0 0 120px rgba(0,0,0,.9), inset 0 0 28px rgba(255,30,50,.10); }
+@media (prefers-reduced-motion: reduce) { .crt-scanlines::after { animation: none; display: none; } }
