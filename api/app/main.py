@@ -326,6 +326,13 @@ def patch_settings(sid: str, req: StationSettings) -> dict:
     return _station(sid)
 
 
+@app.get("/stations/{sid}/playlist")
+def station_playlist(sid: str) -> dict:
+    """The station's own playlist — every song the radio cued, in order; replayable from the station page."""
+    _station(sid)
+    return _playlist(store().auto_playlist(sid))
+
+
 @app.get("/stations/{sid}/profile/effective")
 def effective_profile(sid: str) -> dict:
     """The station profile as the agent sees it right now: seeds + steering from likes / less-like-this votes."""

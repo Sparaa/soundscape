@@ -1,12 +1,17 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { patchSettings, patchSong, planLabel, radioNext, radioPlay, radioStatus, radioStop, songAudioUrl, type RadioStatus, type Song, type Station } from "@/lib/api";
+import { patchSettings, patchSong, planLabel, playlistExportUrl, radioNext, radioPlay, radioStatus, radioStop, removeFromPlaylist, songAudioUrl, stationPlaylist, type Playlist, type RadioStatus, type Song, type Station } from "@/lib/api";
 import { mmss } from "@/lib/profile";
 import { RadioPlayer } from "@/lib/player";
 import Visualizer from "@/app/components/Visualizer";
 
-export default function RadioPanel({ station, onStation }: { station: Station; onStation: (s: Station) => void }) {
+type Mode = "radio" | "playlist";
+type Tab = "playlist" | "seeds" | "profile";
+
+export default function RadioPanel({ station, onStation, seedsPane, profilePane }: {
+  station: Station; onStation: (s: Station) => void; seedsPane?: React.ReactNode; profilePane?: React.ReactNode;
+}) {
   const [status, setStatus] = useState<RadioStatus | null>(null);
   const [song, setSong] = useState<Song | null>(null);
   const [pos, setPos] = useState({ t: 0, d: 0 });
@@ -17,6 +22,14 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   const [scene, setScene] = useState<string>(() => { try { return localStorage.getItem("soundscape.scene") ?? "radial"; } catch { return "radial"; } });
   const player = useRef<RadioPlayer | null>(null);
   const sid = station.id;
+  // what plays NEXT: fresh songs from the agent ("radio") or the station's saved songs in order ("playlist")
+  const [mode, setModeState] = useState<Mode>("radio");
+  const modeRef = useRef<Mode>("radio");
+  const setMode = (m: Mode) => { modeRef.current = m; setModeState(m); };
+  const [tab, setTab] = useState<Tab>("playlist");
+  const [playlist, setPlaylist] = useState<Playlist | null>(null);
+  const playlistRef = useRef<Playlist | null>(null); playlistRef.current = playlist;
+  const plIndex = useRef(-1);
 
   const pausedRef = useRef(false);
   const refresh = useCallback(async () => {
@@ -36,7 +49,15 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
     if (!player.current) {
       const p = new RadioPlayer(songAudioUrl);
       p.onSongChange = setSong;
-      p.onNeedNext = async () => { const r = await radioNext(sid); setStatus(r.status); return r.song; };
+      p.onNeedNext = async () => {
+        if (modeRef.current === "playlist") {                       // saved songs, in order, wrapping around
+          const items = playlistRef.current?.items ?? [];
+          if (!items.length) return null;
+          plIndex.current = (plIndex.current + 1) % items.length;
+          return items[plIndex.current];
+        }
+        const r = await radioNext(sid); setStatus(r.status); return r.song;
+      };
       player.current = p;
       setPlayerObj(p);
     }
@@ -46,9 +67,14 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
   const onPlay = async () => {
     setErr(null);
     try {
+      const p = getPlayer();
+      if (modeRef.current === "playlist") {                          // saved songs need no rendering
+        if (p.paused && (await p.resume())) { setPaused(false); return; }
+        await playSaved(Math.max(0, plIndex.current));
+        return;
+      }
       const st = await radioPlay(sid);
       setStatus(st);
-      const p = getPlayer();
       if (p.paused && (await p.resume())) { setPaused(false); return; }   // Stop paused it: pick the same song up again
       // start as soon as the first song is cued (the spare makes this instant after the first session)
       const first = (await radioNext(sid));
@@ -64,6 +90,21 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
     } catch (e) { setErr(String(e)); }
   };
   const onStop = async () => { player.current?.pause(); setPaused(true); setStatus(await radioStop(sid)); };
+  /** Play a saved song now (crossfading out of whatever is on) and continue through the playlist from there. */
+  const playSaved = async (i: number) => {
+    const items = playlistRef.current?.items ?? [];
+    if (!items[i]) return;
+    setErr(null); setMode("playlist"); plIndex.current = i;
+    const p = getPlayer();
+    try {
+      if (p.current.song) { await p.ctx.resume(); await p.crossfadeTo(items[i], 0.4); }
+      else await p.start(items[i]);
+      setPaused(false);
+    } catch (e) { setErr(String(e)); }
+  };
+  /** Back to fresh songs: the agent resumes buffering; the current song plays out, Skip jumps to a new one. */
+  const toRadio = async () => { setMode("radio"); try { setStatus(await radioPlay(sid)); } catch (e) { setErr(String(e)); } };
+  useEffect(() => { stationPlaylist(sid).then(setPlaylist).catch(() => undefined); }, [sid, song?.id, status?.ready.length]);
   const onSkip = async () => { if (paused) { await radioPlay(sid); setPaused(false); } await getPlayer().skip(); };
   const flag = async (s: Song, flags: { saved?: boolean; liked?: boolean; vote?: -1 | 0 | 1 }) => {
     const u = await patchSong(s.id, flags);
@@ -71,7 +112,7 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
     void refresh();
   };
   const covers = Number(station.settings?.covers ?? 1);
-  const live = (status?.state === "playing" || status?.state === "warming") && !paused;
+  const live = !paused && (mode === "playlist" ? !!song : (status?.state === "playing" || status?.state === "warming"));
   return (
     <section className="flex flex-col gap-3">
       <Visualizer player={playerObj} song={song} tags={station.profile?.tags ?? null} sceneName={scene} label={`Soundscape · ${station.name}`} background
@@ -84,8 +125,12 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
             <button onClick={onStop} className="px-5 py-2 rounded-full border border-zinc-600">■ Stop</button>
           )}
           <button onClick={onSkip} disabled={!song} className="px-3 py-2 rounded-full border border-zinc-800 disabled:opacity-40">⏭ Skip</button>
-          <span className="text-xs text-zinc-500 font-mono whitespace-nowrap ml-auto">{status?.state ?? "…"} · {status?.ready.length ?? 0} cued</span>
+          <div className="ml-auto flex rounded-full border border-zinc-700 overflow-hidden text-xs" title="What plays next: fresh songs from the agent, or this station's saved songs">
+            <button onClick={toRadio} className={`px-3 py-1.5 ${mode === "radio" ? "bg-zinc-100 text-black" : "text-zinc-400"}`}>new</button>
+            <button onClick={() => { setMode("playlist"); if (!song) void playSaved(0); }} disabled={!playlist?.items.length} className={`px-3 py-1.5 disabled:opacity-40 ${mode === "playlist" ? "bg-zinc-100 text-black" : "text-zinc-400"}`}>saved</button>
+          </div>
         </div>
+        <div className="text-xs text-zinc-500 font-mono">{mode === "radio" ? `${status?.state ?? "…"} · ${status?.ready.length ?? 0} cued` : `playlist · song ${plIndex.current + 1} of ${playlist?.items.length ?? 0}`}</div>
         <label className="text-xs text-zinc-400 flex items-center gap-3"><span className="whitespace-nowrap">covers</span>
           <input type="range" min={0} max={2} step={0.25} value={covers} onChange={async (e) => onStation(await patchSettings(sid, { covers: Number(e.target.value) }))} className="flex-1 accent-amber-500" />
           <span className="whitespace-nowrap">new</span>
@@ -118,19 +163,50 @@ export default function RadioPanel({ station, onStation }: { station: Station; o
             {status.ready.map((s) => <div key={s.id}>{s.title} <span className="text-zinc-600">· {planLabel(s.plan)} · {mmss(s.seconds)}</span></div>)}
           </div>
         )}
-        {status && status.recent.length > 0 && (
-          <div className="text-xs text-zinc-500 flex flex-col gap-0.5">
-            <div className="uppercase tracking-widest">Recent</div>
-            {status.recent.slice(0, 6).map((s) => (
-              <div key={s.id} className="flex gap-2">
-                <span className={s.status === "rejected" ? "line-through" : ""}>{s.title}</span>
-                <span className="text-zinc-600">· {planLabel(s.plan)}{s.status === "rejected" && s.gate ? ` · rejected: ${s.gate.reasons.join(", ")}` : ""}</span>
-                {s.status !== "rejected" && <button onClick={() => flag(s, { saved: !s.saved })} className="text-zinc-400 hover:text-emerald-300">{s.saved ? "saved" : "save"}</button>}
-              </div>
-            ))}
+        {status && status.recent.some((s) => s.status === "rejected") && (
+          <div className="text-xs text-zinc-600 flex flex-col gap-0.5">
+            {status.recent.filter((s) => s.status === "rejected").slice(0, 2).map((s) => <div key={s.id}>rejected: <span className="line-through">{s.title}</span> — {s.gate?.reasons.join(", ")}</div>)}
           </div>
         )}
         {err && <div className="text-xs text-red-400">{err}</div>}
+      </div>
+      <div className="pane flex flex-col gap-3">
+        <div className="flex gap-1 text-xs">
+          {(["playlist", "seeds", "profile"] as Tab[]).map((t) => (
+            <button key={t} onClick={() => setTab(t)} className={`px-3 py-1.5 rounded-full border capitalize ${tab === t ? "border-zinc-300 text-zinc-100" : "border-zinc-800 text-zinc-500 hover:text-zinc-300"}`}>
+              {t}{t === "playlist" && playlist ? ` · ${playlist.items.length}` : t === "seeds" ? ` · ${station.seeds.length}` : ""}
+            </button>
+          ))}
+        </div>
+        {tab === "playlist" && (
+          <div className="flex flex-col gap-2">
+            <div className="flex items-center gap-3 text-xs text-zinc-500">
+              <span>{playlist ? `${playlist.items.length} songs · ${mmss(playlist.seconds)}` : "…"}</span>
+              <button onClick={() => playSaved(0)} disabled={!playlist?.items.length} className="px-2 py-0.5 rounded border border-zinc-700 text-zinc-300 disabled:opacity-40">▶ play all</button>
+              {playlist && <Link href={`/playlists/${playlist.id}`} className="hover:text-zinc-200">reorder →</Link>}
+              {playlist && <a href={playlistExportUrl(playlist.id)} className="hover:text-zinc-200">export .zip</a>}
+            </div>
+            {playlist && playlist.items.length === 0 && <div className="text-sm text-zinc-500">Every song the radio cues lands here, ready to play again.</div>}
+            <div className="flex flex-col max-h-[22rem] overflow-y-auto -mx-1">
+              {playlist?.items.map((s, i) => {
+                const on = song?.id === s.id;
+                return (
+                  <div key={s.id} className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg ${on ? "bg-zinc-800/80" : "hover:bg-zinc-900"}`}>
+                    <button onClick={() => playSaved(i)} className={`w-6 text-center ${on ? "text-amber-400" : "text-zinc-500 group-hover:text-zinc-100"}`} title="Play this song now">{on && !paused ? "♪" : "▶"}</button>
+                    <button onClick={() => playSaved(i)} className="flex-1 min-w-0 text-left">
+                      <div className={`text-sm truncate ${on ? "text-zinc-50 font-medium" : "text-zinc-200"}`}>{s.title}</div>
+                      <div className="text-[11px] text-zinc-500 truncate">{planLabel(s.plan) || s.explain}</div>
+                    </button>
+                    <span className="text-[11px] text-zinc-500 font-mono">{s.vote > 0 ? "♥ " : s.vote < 0 ? "👎 " : ""}{mmss(s.seconds)}</span>
+                    <button onClick={async () => { if (playlist) setPlaylist(await removeFromPlaylist(playlist.id, s.id)); }} className="text-zinc-700 hover:text-red-400 text-xs opacity-0 group-hover:opacity-100" title="Remove from this playlist (the file stays in the library)">✕</button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+        {tab === "seeds" && seedsPane}
+        {tab === "profile" && profilePane}
       </div>
     </section>
   );

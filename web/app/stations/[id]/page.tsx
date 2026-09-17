@@ -27,9 +27,9 @@ export default function StationPage() {
         <Link href="/" className="text-zinc-400 hover:text-zinc-100 text-sm">← stations</Link>
         <h1 className="text-xl font-semibold tracking-tight">{st.name}</h1>
       </header>
-      <RadioPanel station={st} onStation={setSt} />
-      <section className="pane flex flex-col gap-2">
-        <h2 className="text-xs uppercase tracking-widest text-zinc-500">Seeds</h2>
+      <RadioPanel station={st} onStation={setSt}
+        seedsPane={(
+      <div className="flex flex-col gap-2">
         <div className="flex gap-2">
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="Paste a YouTube / any link…" disabled={!!busy}
                  className="flex-1 min-w-0 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 outline-none focus:border-zinc-500" />
@@ -55,9 +55,10 @@ export default function StationPage() {
             {s.promoted_sections?.length ? <div className="text-xs text-amber-300">tune sits in the instrument line in: {s.promoted_sections.join(", ")} — covers will sing it</div> : null}
           </div>
         ))}
-      </section>
-      <section className="pane flex flex-col gap-2">
-        <h2 className="text-xs uppercase tracking-widest text-zinc-500">Station profile</h2>
+      </div>
+        )}
+        profilePane={(
+      <div className="flex flex-col gap-2">
         {!p && <p className="text-zinc-500 text-sm">Add a seed to build the profile the agent composes from.</p>}
         {p && (
           <div className="border border-zinc-800 rounded-xl px-4 py-3 flex flex-col gap-3">
@@ -73,7 +74,8 @@ export default function StationPage() {
             {Object.keys(p.phrases).length > 0 && <div className="text-xs text-zinc-500">lines per section: {Object.entries(p.phrases).map(([k, v]) => `${k} ${v.length}×(${v.join(",")})`).join(" · ")}</div>}
           </div>
         )}
-      </section>
+      </div>
+        )} />
       </aside>
     </main>
   );

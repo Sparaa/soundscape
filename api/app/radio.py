@@ -197,9 +197,8 @@ class Store:
         if status == "ready":
             self.auto_playlist_add(sid, song["id"])
 
-    def auto_playlist_add(self, sid: str, song_id: str) -> str:
-        """Every song that passes the gate joins the station's own playlist ("<station> — radio"), which also marks it
-        saved so pruning never touches it. The playlist id lives in the station settings; a deleted playlist is recreated."""
+    def auto_playlist(self, sid: str) -> str:
+        """The station's own playlist ("<station> — radio"): id kept in the station settings, (re)created on demand."""
         row = self.con.execute("SELECT name, settings FROM stations WHERE id=?", (sid,)).fetchone()
         settings = json.loads(row["settings"]) if row and row["settings"] else {}
         pid = settings.get("playlist_id")
@@ -208,6 +207,11 @@ class Store:
             settings["playlist_id"] = pid
             self.con.execute("UPDATE stations SET settings=? WHERE id=?", (json.dumps(settings), sid))
             self.con.commit()
+        return pid
+
+    def auto_playlist_add(self, sid: str, song_id: str) -> str:
+        """Every song that passes the gate joins the station's playlist, which also marks it saved (never pruned)."""
+        pid = self.auto_playlist(sid)
         if song_id not in library.playlist_items(self.con, pid):
             library.add_item(self.con, pid, song_id)
         return pid

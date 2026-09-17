@@ -99,6 +99,9 @@ def test_radio_routes_with_a_fake_renderer(monkeypatch):
         assert c.get(f"/stations/{sid}/songs").json()[0]["id"] in {x["id"] for x in c.get(f"/stations/{sid}/songs").json()}
         assert c.get(f"/songs/{song_id}/audio").status_code == 404        # fake path
         assert c.patch(f"/stations/{sid}/settings", json={"covers": 0.5}).json()["settings"]["covers"] == 0.5
+        pl = c.get(f"/stations/{sid}/playlist").json()                    # the station's own playlist holds what it cued
+        assert pl["name"] == "R — radio" and song_id in [s["id"] for s in pl["items"]] and len(pl["items"]) >= 2
+        assert c.get(f"/stations/{sid}/playlist").json()["id"] == pl["id"]      # stable id
         assert c.post(f"/stations/{sid}/stop").json()["state"] in ("stopping", "stopped")
 
 

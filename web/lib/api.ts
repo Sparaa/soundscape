@@ -21,7 +21,7 @@ export interface Seed {
   key: string | null; bpm: number | null; sections: string[] | null; style_guess: string | null;
   promoted_sections: string[] | null; warnings: string[] | null; has_score: boolean;
 }
-export interface Station { id: string; name: string; created: number; profile: Profile | null; settings: { language?: string; covers?: number; blurb?: string; themes?: string[] } | null; seeds: Seed[] }
+export interface Station { id: string; name: string; created: number; profile: Profile | null; settings: { language?: string; covers?: number; blurb?: string; themes?: string[]; playlist_id?: string } | null; seeds: Seed[] }
 
 async function j<T>(r: Response): Promise<T> {
   if (!r.ok) throw new Error(`${r.status} ${(await r.text()).slice(0, 300)}`);
@@ -116,6 +116,7 @@ export async function removeFromPlaylist(id: string, songId: string): Promise<Pl
 export async function reorderPlaylist(id: string, order: string[]): Promise<Playlist> {
   return j(await fetch(`${API_URL}/playlists/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ order }) }));
 }
+export async function stationPlaylist(stationId: string): Promise<Playlist> { return j(await fetch(`${API_URL}/stations/${stationId}/playlist`, { cache: "no-store" })); }
 export function playlistExportUrl(id: string): string { return `${API_URL}/playlists/${id}/export.zip`; }
 
 /** Move an item within an order (pure). */
