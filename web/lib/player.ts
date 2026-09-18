@@ -26,8 +26,11 @@ export class RadioPlayer {
   active = 0;
   onSongChange: (s: Song | null) => void = () => {};
   onNeedNext: () => Promise<Song | null> = async () => null;
+  /** A failed next-song fetch (API restarting, network blip): the player retries by itself; the UI may show it. */
+  onNextError: (e: unknown) => void = () => {};
   private timer: number | null = null;
   private fetching = false;
+  private retryAt = 0;      // performance.now() before which we don't ask again (nothing cued yet, or the last ask failed)
 
   constructor(audioUrl: (id: string) => string) {
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -70,25 +73,31 @@ export class RadioPlayer {
     deck.el.load();
   }
 
-  /** Called every 250 ms: near the end, fetch + start the next song on the standby deck and crossfade. */
+  /** Called every 250 ms: near the end (or after it), fetch + start the next song on the standby deck and crossfade. */
   private tick = (): void => {
     const cur = this.current;
     const dur = isFinite(cur.el.duration) && cur.el.duration > 0 ? cur.el.duration : cur.song?.seconds ?? null;
-    const at = nextStartAt(dur);
-    if (cur.el.currentTime >= at && !this.fetching && !this.standby.song) {
-      this.fetching = true;
-      void this.onNeedNext().then(async (next) => {
-        this.fetching = false;
-        if (!next) return;               // nothing cued yet — the current track plays to its end and we retry
-        await this.crossfadeTo(next);
-      });
-    }
-    if (cur.el.ended && !this.standby.song && !this.fetching) {
-      this.fetching = true;
-      void this.onNeedNext().then(async (next) => { this.fetching = false; if (next) await this.crossfadeTo(next, 0.2); });
-    }
+    const due = cur.el.ended || cur.el.currentTime >= nextStartAt(dur);
+    if (due && !this.fetching && !this.standby.song && performance.now() >= this.retryAt) void this.pull(cur.el.ended ? 0.2 : CROSSFADE_S);
     this.timer = window.setTimeout(this.tick, 250);
   };
+
+  /** One attempt at the next song. `fetching` ALWAYS clears: a rejected fetch (API restarting mid-deploy, a blip) used to
+   * leave it stuck and the radio silent after the song ended until the user pressed Skip. Nothing cued / failed → ask
+   * again in a second (the agent is still composing), not every 250 ms. */
+  private async pull(crossfadeS: number): Promise<void> {
+    this.fetching = true;
+    try {
+      const next = await this.onNeedNext();
+      if (next) await this.crossfadeTo(next, crossfadeS);
+      else this.retryAt = performance.now() + 1000;
+    } catch (e) {
+      this.retryAt = performance.now() + 1000;
+      this.onNextError(e);
+    } finally {
+      this.fetching = false;
+    }
+  }
 
   async crossfadeTo(next: Song, seconds = CROSSFADE_S): Promise<void> {
     const out = this.current, inn = this.standby;

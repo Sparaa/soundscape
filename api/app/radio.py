@@ -99,6 +99,18 @@ class Radio:
             self._event("error", error=str(e)[:200])
 
     async def _render_one(self) -> None:
+        try:
+            await self._render_attempts()
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:   # LLM/sidecar unreachable etc.: log it, clear the stale "rendering" status, let the loop retry
+            log.warning("render crashed: %s", e)
+            self._event("render_failed", error=f"{type(e).__name__}: {e}"[:200])
+            await asyncio.sleep(5)   # not a tight loop while a backend is down
+        finally:
+            self.rendering = None
+
+    async def _render_attempts(self) -> None:
         station = self.store.station(self.station_id)
         seeds = self.store.seeds(self.station_id)
         history = self.store.history(self.station_id)
@@ -118,7 +130,6 @@ class Radio:
             self.store.add_song(self.station_id, song, status="rejected")
             self._event("rejected", song_id=song["id"], reasons=song["gate"]["reasons"])
             history = self.store.history(self.station_id)
-        self.rendering = None
 
     def _progress(self, stage: str, progress: float) -> None:
         if self.rendering:

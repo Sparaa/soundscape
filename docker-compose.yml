@@ -24,6 +24,7 @@ services:
     volumes: ["${LIBRARY_DIR:-./library}:/library"]
     ports: ["127.0.0.1:${API_PORT:-3021}:3021"]
     extra_hosts: ["host.docker.internal:host-gateway"]
+    logging: {driver: json-file, options: {max-size: 5m, max-file: "2"}}   # enough history to diagnose a radio stall
   yue2:
     profiles: ["gpu"]            # `docker compose --profile gpu up -d` runs the GPU sidecars here; without it, point *_URL at existing ones
     image: yue2-sidecar:latest

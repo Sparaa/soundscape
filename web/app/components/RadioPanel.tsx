@@ -37,8 +37,9 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
       const st = await radioStatus(sid);
       setStatus(st);
       setErr(null);                                   // a transient failure (API restart, blip) clears itself
-      // the API forgot we were playing (it restarted): tell it again so the buffer keeps filling
-      if (st.state === "stopped" && player.current && player.current.current.song && !pausedRef.current) setStatus(await radioPlay(sid));
+      // the API forgot we were playing (it restarted): tell it again so the buffer keeps filling (radio mode only —
+      // saved songs need no rendering)
+      if (st.state === "stopped" && modeRef.current === "radio" && player.current && player.current.current.song && !pausedRef.current) setStatus(await radioPlay(sid));
     } catch (e) { setErr(`connection to the API lost — retrying (${String(e).slice(0, 80)})`); }
   }, [sid]);
   useEffect(() => { void refresh(); const id = window.setInterval(refresh, 2000); return () => window.clearInterval(id); }, [refresh]);
@@ -50,6 +51,7 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
     if (!player.current) {
       const p = new RadioPlayer(songAudioUrl);
       p.onSongChange = setSong;
+      p.onNextError = (e) => setErr(`next song: ${String(e).slice(0, 80)} — retrying`);   // cleared by the next good status poll
       p.onNeedNext = async () => {
         if (modeRef.current === "playlist") {                       // saved songs, in order, wrapping around
           const items = playlistRef.current?.items ?? [];
@@ -106,7 +108,12 @@ export default function RadioPanel({ station, onStation, seedsPane, profilePane 
   /** Back to fresh songs: the agent resumes buffering; the current song plays out, Skip jumps to a new one. */
   const toRadio = async () => { setMode("radio"); try { setStatus(await radioPlay(sid)); } catch (e) { setErr(String(e)); } };
   useEffect(() => { stationPlaylist(sid).then(setPlaylist).catch(() => undefined); }, [sid, song?.id, status?.ready.length]);
-  const onSkip = async () => { if (paused) { await radioPlay(sid); setPaused(false); } await getPlayer().skip(); };
+  const onSkip = async () => {
+    try {
+      if (paused) { await radioPlay(sid); setPaused(false); }
+      await getPlayer().skip();
+    } catch (e) { setErr(`skip: ${String(e).slice(0, 80)}`); }
+  };
   const flag = async (s: Song, flags: { saved?: boolean; liked?: boolean; vote?: -1 | 0 | 1 }) => {
     const u = await patchSong(s.id, flags);
     if (song?.id === s.id) setSong(u);
